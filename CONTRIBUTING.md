@@ -2,7 +2,7 @@
 
 ## Get oriented
 
-Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The repository is currently documentation-only; do not assume a bot or integrations already exist.
+Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The foundation supports basic commands and storage; reminders, Jira, and transcripts are still outstanding. Follow [development instructions](docs/DEVELOPMENT.md) to set up and verify changes.
 
 Coordinate work using Jira. Each issue should state the user outcome, scope, acceptance criteria, dependencies, and how to verify the result. Link your pull request to its issue. If you do not have board access, ask a maintainer through the team's existing communication channel.
 
@@ -14,15 +14,16 @@ Coordinate work using Jira. Each issue should state the user outcome, scope, acc
 4. Implement a small, coherent change with appropriate tests and update affected documentation.
 5. Run the project's formatter, linter, type checker, and relevant tests once configured. Report commands and results honestly; mark checks that could not run and explain why.
 6. Open a pull request with the linked issue, behavior change, validation evidence, configuration or migration requirements, and any known limitations.
-7. Obtain review from at least one teammate before merging. Resolve correctness, security, and readability concerns; do not bypass failing checks to merge.
+7. Keep only one implementation PR open at a time for this project. Merge or close it before opening the next.
+8. Obtain review from at least one teammate before merging. Resolve correctness, security, and readability concerns; do not bypass failing checks to merge.
 
-## First implementation tasks
+## Remaining implementation tasks
 
 - Confirm the decisions listed in the prerequisites and record significant choices as architecture decision records under `docs/decisions/`.
-- Add a pinned Python toolchain, dependency manifest and lockfile, plus reproducible setup instructions.
-- Configure formatting, linting, static typing, tests, and CI before building feature modules. Ruff, mypy, and pytest are proposed tools; no checks are configured yet.
-- Add a validated configuration model and an example configuration containing placeholders only.
-- Build an offline-testable Discord command path and persistence layer, then reminder delivery.
+- Maintain the pinned toolchain, dependency manifest, lockfile, and reproducible setup instructions.
+- Run Ruff, strict mypy, and pytest before opening a PR. Keep CI green; add relevant tests for each feature.
+- Extend the validated configuration model and placeholder-only example as features require.
+- Complete the live Discord foundation smoke check, then implement reminder delivery.
 - Prove voice capture and transcription feasibility separately, using synthetic audio and a private test server with consenting participants.
 
 ## Review checklist

@@ -1,6 +1,6 @@
 # Implementation issues
 
-These are proposed work items, not live GitHub or Jira issues. IDs below are local planning identifiers. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
+These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), and [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
 
 | ID | Work item | Branch | Dependencies |
 | --- | --- | --- | --- |
@@ -10,6 +10,8 @@ These are proposed work items, not live GitHub or Jira issues. IDs below are loc
 | JDR-004 | Meeting capture and transcripts | `feat/meeting-transcripts` | JDR-001; meeting model from JDR-002; voice feasibility |
 
 ## JDR-001: Development foundation
+
+Implementation and local automated validation are in progress; the live Discord smoke check remains pending. See [development instructions](DEVELOPMENT.md).
 
 Provide a reproducible, testable application baseline so contributors can safely build features.
 

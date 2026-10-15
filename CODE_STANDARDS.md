@@ -1,6 +1,6 @@
 # Code standards
 
-These rules are the review baseline for future implementation. Automation is not configured yet; the first implementation must add the checks described below.
+These rules are the review baseline for future implementation. Ruff formatting/lint, strict mypy for production modules, and pytest are configured in CI; see `docs/DEVELOPMENT.md` for exact commands.
 
 ## Readability and structure
 
