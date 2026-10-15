@@ -2,7 +2,7 @@
 
 A planned Discord assistant for a senior computer engineering project. It will help the team prepare for meetings, retain meeting records, and stay aware of work tracked in Jira.
 
-**Status:** planning stage. This repository contains project and contributor documentation; the bot, integrations, and automated tests are not implemented yet.
+**Status:** foundation implemented with guild-scoped `/ping` and operator-only `/status`, validated configuration, PostgreSQL migrations, automated tests, and CI configuration. Live Discord validation is pending. Reminders, Jira integration, and transcription are not implemented.
 
 ## Intended capabilities
 
@@ -23,8 +23,16 @@ The initial target is meetings held in a Discord voice channel. Supporting Zoom,
 - [Prerequisites](docs/PREREQUISITES.md): accounts, permissions, configuration, and open decisions.
 - [Security and data handling](SECURITY.md): credentials, recording, retention, and incident response.
 
-## Development direction
+## Development
 
-Python 3.12 is the proposed baseline, with an asynchronous Discord client, PostgreSQL for durable state, and a database-backed scheduler. These are design proposals rather than installed dependencies. Select and pin packages only after testing compatibility, especially Discord voice receive and the chosen transcription service.
+Python 3.12.14, uv 0.12.23, and PostgreSQL 16 are the initial baseline. See [development instructions](docs/DEVELOPMENT.md) for installation, migrations, configuration, test commands, and the required Discord smoke check. See the [foundation decision](docs/decisions/0001-development-foundation.md) for selected libraries and scope.
 
-There is currently no install, run, lint, or test command. The first implementation pull request must supply a dependency manifest, lockfile, runnable entry point, configuration validation, CI checks, and exact development commands. Do not use real meeting recordings or credentials as test fixtures.
+```sh
+uv sync --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest -v
+```
+
+The PostgreSQL integration test needs a disposable `TEST_DATABASE_URL`; it is explicitly skipped without one. CI supplies its own database. Never use real meeting recordings or credentials as test fixtures.

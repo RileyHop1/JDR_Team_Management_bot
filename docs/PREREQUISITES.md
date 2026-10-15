@@ -1,6 +1,6 @@
 # Prerequisites and decisions
 
-No runtime dependencies are declared or installed by this repository yet. This checklist is for the first implementation and controlled integration tests.
+Foundation dependencies are declared in `pyproject.toml` and pinned in `uv.lock`; see [development instructions](DEVELOPMENT.md). This checklist is for the first implementation and controlled integration tests.
 
 ## Accounts and permissions
 
@@ -13,11 +13,12 @@ No runtime dependencies are declared or installed by this repository yet. This c
 
 ## Proposed configuration contract
 
-These are proposed names, not variables read by existing code. Confirm them when implementing the validated configuration model. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
+The foundation reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_OPERATOR_ROLE_ID`, `DATABASE_URL`, and `BOT_TIMEZONE`. Other names below remain proposed for later features. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
 
 | Name | Purpose | Sensitive? |
 | --- | --- | --- |
 | `DISCORD_BOT_TOKEN` | Authenticate the bot. | Yes |
+| `DISCORD_OPERATOR_ROLE_ID` | Role required for management commands, including `/status`. | No |
 | `DISCORD_GUILD_ID` | Restrict initial command registration and operation to the test/team server. | No |
 | `MEETINGS_CHANNEL_ID` | Default private transcript destination. | No |
 | `BRIEF_CHANNEL_ID` | Morning brief destination. | No |

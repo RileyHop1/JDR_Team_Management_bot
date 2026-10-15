@@ -1,6 +1,6 @@
 # Proposed architecture
 
-**Status:** design proposal; no components are implemented. Record provider and library selections in architecture decision records before depending on them.
+**Status:** overall design proposal. The configuration, basic Discord commands, PostgreSQL lifecycle, and initial migration are implemented; feature services remain planned. Record provider and library selections in architecture decision records before depending on them.
 
 ## System shape
 
