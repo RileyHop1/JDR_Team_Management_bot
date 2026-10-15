@@ -47,6 +47,8 @@ async def test_ping_and_guild_isolation(settings):
         "ping",
         "status",
     }
+    assert bot.intents.guilds
+    assert not bot.intents.members
     assert not bot.intents.message_content
 
 
@@ -85,3 +87,35 @@ async def test_startup_checks_schema_before_sync(settings, monkeypatch):
     with pytest.raises(RuntimeError, match="unmigrated"):
         await bot.setup_hook()
     sync.assert_not_awaited()
+
+
+async def test_operator_role_resolves_from_real_discord_member(settings, monkeypatch):
+    check = AsyncMock()
+    monkeypatch.setattr("jdr_bot.bot.check_database", check)
+    bot = TeamBot(settings, MagicMock())
+    guild = discord.Guild(
+        state=bot._connection,
+        data={
+            "id": "123",
+            "name": "Synthetic test server",
+            "roles": [
+                {"id": "123", "name": "@everyone", "permissions": "0", "position": 0},
+                {"id": "456", "name": "Operator", "permissions": "0", "position": 1},
+            ],
+        },
+    )
+    member = discord.Member(
+        state=bot._connection,
+        guild=guild,
+        data={
+            "user": {"id": "789", "username": "synthetic", "discriminator": "0", "avatar": None},
+            "roles": ["456"],
+            "joined_at": None,
+            "flags": 0,
+        },
+    )
+    request = interaction()
+    request.user = member
+    await bot.operator_status(request)
+    check.assert_awaited_once()
+    request.followup.send.assert_awaited_once_with("Database ready.", ephemeral=True)

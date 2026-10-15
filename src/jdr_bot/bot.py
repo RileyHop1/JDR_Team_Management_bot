@@ -18,9 +18,10 @@ class TeamBot(discord.Client):
     """Single-guild bot with no message-content or privileged member intent."""
 
     def __init__(self, settings: Settings, engine: AsyncEngine) -> None:
-        super().__init__(
-            intents=discord.Intents.none(), allowed_mentions=discord.AllowedMentions.none()
-        )
+        intents = discord.Intents.none()
+        # Member.roles resolves IDs through the guild role cache, populated by this intent.
+        intents.guilds = True
+        super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none())
         self.settings = settings
         self.engine = engine
         self.tree = app_commands.CommandTree(self)
