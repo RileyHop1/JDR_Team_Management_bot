@@ -2,7 +2,7 @@
 
 A planned Discord assistant for a senior computer engineering project. It will help the team prepare for meetings, retain meeting records, and stay aware of work tracked in Jira.
 
-**Status:** foundation implemented with guild-scoped `/ping` and operator-only `/status`, validated configuration, PostgreSQL migrations, automated tests, and CI configuration. Live Discord validation is pending. Reminders, Jira integration, and transcription are not implemented.
+**Status:** foundation and meeting reminders are implemented offline. The bot registers guild-scoped `/ping`, operator-only `/status`, and operator-only `/meeting` commands. Reminders are stored in PostgreSQL and restored after restart. The reminder policy in [decision 0002](docs/decisions/0002-meeting-reminders.md) is provisional and needs team confirmation. Live Discord validation, including a reminder in the test server, is pending. Jira integration and transcription are not implemented.
 
 ## Intended capabilities
 
@@ -25,7 +25,7 @@ The initial target is meetings held in a Discord voice channel. Supporting Zoom,
 
 ## Development
 
-Python 3.12.14, uv 0.12.23, and PostgreSQL 16 are the initial baseline. See [development instructions](docs/DEVELOPMENT.md) for installation, migrations, configuration, test commands, and the required Discord smoke check. See the [foundation decision](docs/decisions/0001-development-foundation.md) for selected libraries and scope.
+Python 3.12.14, uv 0.12.23, and PostgreSQL 16 are the initial baseline. See [development instructions](docs/DEVELOPMENT.md) for installation, migrations, configuration, test commands, and the Discord smoke checks. See the [foundation decision](docs/decisions/0001-development-foundation.md) and the provisional [meeting-reminder decision](docs/decisions/0002-meeting-reminders.md).
 
 ```sh
 uv sync --locked

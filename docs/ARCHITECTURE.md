@@ -1,6 +1,6 @@
 # Proposed architecture
 
-**Status:** overall design proposal. The configuration, basic Discord commands, PostgreSQL lifecycle, and initial migration are implemented; feature services remain planned. Record provider and library selections in architecture decision records before depending on them.
+**Status:** overall design proposal. Configuration, basic Discord commands, the meeting service, durable reminder jobs, and the single-process scheduler are implemented. Reminder policy is provisional in [decision 0002](decisions/0002-meeting-reminders.md). Jira and recording remain planned. Record provider and library selections in architecture decision records before depending on them.
 
 ## System shape
 
@@ -47,7 +47,7 @@ Use foreign keys and uniqueness constraints for scope and job identities. Decide
 
 ## Scheduling and delivery
 
-Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Proposed defaults: send a missed brief once on same-day recovery; skip reminder offsets already past when recovering, while retaining future reminders. Confirm these policies before implementation.
+Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Reminder recovery is specified in [decision 0002](decisions/0002-meeting-reminders.md) and still needs team confirmation: skip offsets outside the 60-second grace, keep future reminders, and do not resend a reminder whose receipt could not be stored. Sending a missed morning brief once on same-day recovery remains an unconfirmed proposal.
 
 Use transactions to claim jobs and finite retries for transient failures. Discord delivery and database updates cannot be atomic: a crash after sending can cause a duplicate. Retain message receipts, reconcile when possible, and document the remaining duplicate window rather than promising exactly-once delivery.
 

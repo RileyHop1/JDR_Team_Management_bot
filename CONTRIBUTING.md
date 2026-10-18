@@ -2,7 +2,7 @@
 
 ## Get oriented
 
-Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The foundation supports basic commands and storage; reminders, Jira, and transcripts are still outstanding. Follow [development instructions](docs/DEVELOPMENT.md) to set up and verify changes.
+Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The foundation supports basic commands, storage, and durable meeting reminders. Jira and transcripts are still outstanding, and the live Discord checks have not been completed. Follow [development instructions](docs/DEVELOPMENT.md) to set up and verify changes.
 
 Coordinate work using Jira. Each issue should state the user outcome, scope, acceptance criteria, dependencies, and how to verify the result. Link your pull request to its issue. If you do not have board access, ask a maintainer through the team's existing communication channel.
 
@@ -23,7 +23,8 @@ Coordinate work using Jira. Each issue should state the user outcome, scope, acc
 - Maintain the pinned toolchain, dependency manifest, lockfile, and reproducible setup instructions.
 - Run Ruff, strict mypy, and pytest before opening a PR. Keep CI green; add relevant tests for each feature.
 - Extend the validated configuration model and placeholder-only example as features require.
-- Complete the live Discord foundation smoke check, then implement reminder delivery.
+- Confirm [decision 0002](docs/decisions/0002-meeting-reminders.md) with the team before treating the reminder policy as final.
+- Complete the live Discord foundation smoke check and the meeting-reminder smoke check in [development instructions](docs/DEVELOPMENT.md).
 - Prove voice capture and transcription feasibility separately, using synthetic audio and a private test server with consenting participants.
 
 ## Review checklist
