@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
-from jdr_bot.storage import check_database, create_engine
+from jdr_bot.storage import SCHEMA_REVISION, check_database, create_engine
 
 
 @pytest.mark.integration
@@ -29,6 +29,10 @@ async def test_postgres_migration_roundtrip_and_isolation():
     try:
         await migrate("upgrade", "head")
         await migrate("upgrade", "head")  # Repeated setup must be safe.
+        async with engine.begin() as connection:
+            await connection.execute(text("DELETE FROM reminder_jobs"))
+            await connection.execute(text("DELETE FROM meetings"))
+            await connection.execute(text("DELETE FROM guild_configurations"))
         await check_database(engine)
         async with engine.connect() as connection:
             transaction = await connection.begin()
@@ -53,11 +57,17 @@ async def test_postgres_migration_roundtrip_and_isolation():
         with pytest.raises(RuntimeError, match="schema is outdated"):
             await check_database(engine)
         async with engine.begin() as connection:
-            await connection.execute(text("UPDATE alembic_version SET version_num = '0001'"))
+            await connection.execute(
+                text("UPDATE alembic_version SET version_num = :revision"),
+                {"revision": SCHEMA_REVISION},
+            )
         await migrate("downgrade", "base")
         with pytest.raises(ProgrammingError):
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT * FROM guild_configurations"))
+        with pytest.raises(ProgrammingError):
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT * FROM meetings"))
         await migrate("upgrade", "head")
         await check_database(engine)
     finally:

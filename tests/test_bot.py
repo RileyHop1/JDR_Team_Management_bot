@@ -1,5 +1,6 @@
 """Exercise real command handlers with synthetic Discord interactions."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,8 +22,9 @@ def test_operator_policy(guild_id, roles, allowed):
     )
 
 
-def interaction(guild_id=123, roles=None):
+def interaction(guild_id=123, roles=None, user_id=7):
     member = MagicMock(spec=discord.Member)
+    member.id = user_id
     member.roles = [SimpleNamespace(id=role) for role in (roles or [])]
     return SimpleNamespace(
         guild_id=guild_id,
@@ -46,6 +48,16 @@ async def test_ping_and_guild_isolation(settings):
     assert {command.name for command in bot.tree.get_commands(guild=bot.guild)} == {
         "ping",
         "status",
+        "meeting",
+    }
+    meeting = bot.tree.get_command("meeting", guild=bot.guild)
+    assert meeting is not None
+    assert {command.name for command in meeting.commands} == {
+        "create",
+        "list",
+        "view",
+        "update",
+        "cancel",
     }
     assert bot.intents.guilds
     assert not bot.intents.members
@@ -78,6 +90,34 @@ async def test_operator_status_handles_database_result(settings, monkeypatch, fa
     assert "sensitive-password" not in caplog.text
 
 
+class IdleScheduler:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.runs = 0
+
+    async def serve(self) -> None:
+        self.runs += 1
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            raise
+
+
+async def test_scheduler_starts_once_and_stops_on_close(settings, monkeypatch):
+    monkeypatch.setattr("jdr_bot.bot.check_database", AsyncMock())
+    scheduler = IdleScheduler()
+    bot = TeamBot(settings, MagicMock(), scheduler=scheduler)
+    monkeypatch.setattr(bot.tree, "sync", AsyncMock())
+    await bot.setup_hook()
+    await scheduler.started.wait()
+    await bot.on_ready()
+    assert scheduler.runs == 1
+    await bot.close()
+    assert scheduler.started.is_set()
+    assert bot._scheduler_task is None
+
+
 async def test_startup_checks_schema_before_sync(settings, monkeypatch):
     check = AsyncMock(side_effect=RuntimeError("unmigrated"))
     monkeypatch.setattr("jdr_bot.bot.check_database", check)
@@ -87,6 +127,7 @@ async def test_startup_checks_schema_before_sync(settings, monkeypatch):
     with pytest.raises(RuntimeError, match="unmigrated"):
         await bot.setup_hook()
     sync.assert_not_awaited()
+    assert bot._scheduler_task is None
 
 
 async def test_operator_role_resolves_from_real_discord_member(settings, monkeypatch):

@@ -25,6 +25,8 @@ Acceptance criteria:
 
 ## JDR-002: Meeting configuration and reminders
 
+Offline behavior is implemented under the provisional policy in [decision 0002](decisions/0002-meeting-reminders.md): operator-only commands, validated schedules, durable jobs, restart recovery, and fake-clock tests. Team confirmation of that policy and a reminder demonstrated in the test server are still outstanding, so this item is not complete. See [meeting reminders](features/meeting-reminders.md).
+
 Let authorized members create, view, update, and cancel meetings with configurable reminder offsets.
 
 Acceptance criteria:

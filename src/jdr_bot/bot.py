@@ -1,5 +1,6 @@
 """Discord boundaries: guild-scoped commands and resource ownership."""
 
+import asyncio
 import logging
 
 import discord
@@ -9,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from jdr_bot.authorization import can_manage
 from jdr_bot.config import Settings
-from jdr_bot.storage import check_database
+from jdr_bot.discord_adapters import DiscordChannelDirectory, DiscordReminderDelivery
+from jdr_bot.meeting_commands import MeetingCommands
+from jdr_bot.meeting_service import MeetingService
+from jdr_bot.ports import ReminderRunner, SystemClock
+from jdr_bot.reminder_scheduler import ReminderScheduler
+from jdr_bot.storage import SqlMeetingStore, check_database
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +23,34 @@ logger = logging.getLogger(__name__)
 class TeamBot(discord.Client):
     """Single-guild bot with no message-content or privileged member intent."""
 
-    def __init__(self, settings: Settings, engine: AsyncEngine) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        engine: AsyncEngine,
+        *,
+        meetings: MeetingService | None = None,
+        scheduler: ReminderRunner | None = None,
+    ) -> None:
         intents = discord.Intents.none()
         # Member.roles resolves IDs through the guild role cache, populated by this intent.
         intents.guilds = True
         super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none())
         self.settings = settings
         self.engine = engine
+        self._closing = False
+        self._scheduler_task: asyncio.Task[None] | None = None
+        store = SqlMeetingStore(engine)
+        clock = SystemClock()
+        self.meetings = (
+            meetings
+            if meetings is not None
+            else MeetingService(store, DiscordChannelDirectory(self), clock)
+        )
+        self.scheduler = (
+            scheduler
+            if scheduler is not None
+            else ReminderScheduler(store, DiscordReminderDelivery(self), clock)
+        )
         self.tree = app_commands.CommandTree(self)
         self.guild = discord.Object(id=settings.discord_guild_id)
         self.tree.add_command(
@@ -40,12 +67,56 @@ class TeamBot(discord.Client):
             ),
             guild=self.guild,
         )
+        self.tree.add_command(MeetingCommands(self), guild=self.guild)
 
     async def setup_hook(self) -> None:
         """Fail startup on database errors; register commands only in the selected guild."""
         await check_database(self.engine)
-        await self.tree.sync(guild=self.guild)
+        self._start_scheduler()
+        try:
+            await self.tree.sync(guild=self.guild)
+        except Exception:
+            await self._stop_scheduler()
+            raise
         logger.info("guild_commands_registered")
+
+    async def on_ready(self) -> None:
+        """Restart the scheduler if it stopped while the gateway reconnects."""
+        self._start_scheduler()
+
+    async def close(self) -> None:
+        """Cancel the reminder task before closing the Discord connection."""
+        self._closing = True
+        await self._stop_scheduler()
+        await super().close()
+
+    def _start_scheduler(self) -> None:
+        if self._closing:
+            return
+        current = self._scheduler_task
+        if current is not None and not current.done():
+            return
+        task = asyncio.create_task(self.scheduler.serve(), name="reminder-scheduler")
+        task.add_done_callback(self._watch_scheduler)
+        self._scheduler_task = task
+        logger.info("reminder_scheduler_started")
+
+    async def _stop_scheduler(self) -> None:
+        task = self._scheduler_task
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        self._scheduler_task = None
+
+    def _watch_scheduler(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            logger.info("reminder_scheduler_stopped")
+            return
+        error = task.exception()
+        if error is not None:
+            logger.error("reminder_scheduler_stopped error_type=%s", type(error).__name__)
 
     async def ping(self, interaction: discord.Interaction[discord.Client]) -> None:
         """Reply privately to a guild-scoped responsiveness check."""

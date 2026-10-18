@@ -41,12 +41,25 @@ Migrations require only `DATABASE_URL`. Never run migrations against an unknown 
 
 1. Install a dedicated test bot in a private test guild with `bot` and `applications.commands` scopes. Permit viewing the test channel and sending messages; no Administrator or privileged intents are required for these commands.
 2. Set `DISCORD_GUILD_ID` and `DISCORD_OPERATOR_ROLE_ID` to the test guild and its dedicated operator role. Grant yourself that role.
-3. Start the migrated application. Startup verifies the schema before syncing `/ping` and `/status` to that guild only. Guild sync replaces that application's existing commands in the selected guild; use a dedicated bot during development.
+3. Start the migrated application. Startup verifies the schema before syncing `/ping`, `/status`, and `/meeting` to that guild only. Guild sync replaces that application's existing commands in the selected guild; use a dedicated bot during development.
 4. Run `/ping` and expect an ephemeral `Pong!`. As an operator, run `/status` and expect `Database ready.`
 5. As a member without the configured role, run `/status` and expect `Operator role required.` Administrators also need the configured role.
 6. Send SIGTERM or press Ctrl-C. Confirm the process exits and the bot disconnects. Restart it and repeat `/ping`.
 
 A successful offline test is not evidence that this live check passed. Record the result in the PR without publishing tokens or personal server content.
+
+## Meeting reminder smoke check (required before issue #6 is complete)
+
+This check has not been run. Offline tests do not replace it.
+
+1. Complete the foundation smoke check above. Apply migrations through revision `0002`.
+2. As an operator, run `/meeting create` with a synthetic title, a start a few minutes ahead, `BOT_TIMEZONE` or an explicit IANA zone, a text channel the bot can post in, a different voice channel it can view, and offset `1`.
+3. Confirm the ephemeral reply shows the meeting id, local start, UTC instant, and `1 min before: scheduled`. As a member without the operator role, confirm `/meeting list` returns `Operator role required.`
+4. Wait until one minute before the start. Confirm one reminder appears in the text channel, with no user or role mentions, and that `/meeting view` shows `delivered` plus a message id.
+5. Stop the process, start it again, and confirm a future reminder is still scheduled. A reminder whose due time is more than 60 seconds in the past should be `skipped (missed_window)` rather than sent late.
+6. Cancel the meeting with `/meeting cancel` and confirm no further reminder is posted.
+
+Do not put real meeting titles, attendance, or tokens in the PR. Say only whether each step passed.
 
 ## Quality checks
 
@@ -64,7 +77,7 @@ docker exec jdr-dev-postgres createdb -U jdr jdr_test
 TEST_DATABASE_URL=postgresql+psycopg://jdr:jdr@localhost:5432/jdr_test uv run pytest -v
 ```
 
-Run `createdb` only once. The integration test upgrades and downgrades the schema, temporarily changes the migration version, and verifies rollback and constraints. Do not point it at a shared or valuable database; the name guard is only a safeguard. Do not run concurrent integration suites against the same database. CI provisions a fresh PostgreSQL service and sets the test URL so this check executes.
+Run `createdb` only once. The integration tests upgrade the schema, and the foundation test also downgrades it, temporarily changes the migration version, and verifies rollback and constraints. They delete rows in `reminder_jobs`, `meetings`, and `guild_configurations`. Do not point them at a shared or valuable database; the name guard is only a safeguard. Do not run concurrent integration suites against the same database. CI provisions a fresh PostgreSQL service and sets the test URL so this check executes.
 
 ## Troubleshooting and limits
 
@@ -72,5 +85,6 @@ Run `createdb` only once. The integration test upgrades and downgrades the schem
 - `startup_failed`: verify the database is reachable and migrated, the bot token is valid, and the bot is installed in the configured guild. Raw exceptions are intentionally not printed because providers may include credentials.
 - Missing slash commands: check guild ID, installation scopes, and successful startup; commands are never registered globally.
 - Failed `/status`: inspect database health and migration revision. Queries and connection attempts have bounded timeouts.
-- This foundation does not schedule jobs, access Jira, receive voice audio, or record/transcribe meetings.
+- Reminder jobs run in one background task inside this process. Jira, voice receive, and transcription are not implemented. Two processes on the same database can deliver the same reminder twice.
+- A reminder older than 60 seconds is skipped, not sent late. See [meeting reminders](features/meeting-reminders.md) for command errors and job states.
 - discord.py currently emits an upstream Python `audioop` deprecation warning; the project stays on Python 3.12 pending a tested upgrade.
