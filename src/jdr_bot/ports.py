@@ -1,12 +1,14 @@
-"""Interfaces for storage, Discord, and the clock. Implementations are injected."""
+"""Interfaces for storage, Discord, Jira, and the clock. Implementations are injected."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Protocol
 
+from jdr_bot.brief import BriefJobRecord, ClaimedBrief, NewBriefJob
 from jdr_bot.domain import (
     ChannelFacts,
     ClaimedReminder,
+    JobState,
     MeetingRecord,
     MeetingState,
     MeetingWrite,
@@ -163,3 +165,104 @@ class MeetingStore(Protocol):
 class ReminderRunner(Protocol):
     async def serve(self) -> None:
         """Poll until cancelled."""
+
+
+class BriefQueryError(Exception):
+    """A Jira read failed. ``category`` is safe to store and show to operators."""
+
+    def __init__(self, category: str, *, transient: bool) -> None:
+        self.category = category
+        self.transient = transient
+        super().__init__(category)
+
+
+class JiraIssue:
+    """Fields required for the brief. Descriptions and comments are not read."""
+
+    def __init__(
+        self, key: str, summary: str, status_name: str, assignee_display_name: str | None
+    ) -> None:
+        self.key = key
+        self.summary = summary
+        self.status_name = status_name
+        self.assignee_display_name = assignee_display_name
+
+
+class JiraPage:
+    def __init__(
+        self, *, issues: tuple[JiraIssue, ...], next_page_token: str | None, is_last: bool
+    ) -> None:
+        self.issues = issues
+        self.next_page_token = next_page_token
+        self.is_last = is_last
+
+
+class JiraSearchRequest:
+    def __init__(
+        self, *, jql: str, next_page_token: str | None, max_results: int, fields: tuple[str, ...]
+    ) -> None:
+        self.jql = jql
+        self.next_page_token = next_page_token
+        self.max_results = max_results
+        self.fields = fields
+
+
+class JiraReader(Protocol):
+    async def search(self, request: JiraSearchRequest) -> JiraPage:
+        """Read one search page. Must not create or edit Jira issues."""
+
+
+class BriefMessage:
+    def __init__(self, *, channel_id: int, parts: tuple[str, ...]) -> None:
+        self.channel_id = channel_id
+        self.parts = parts
+
+
+class PartialDelivery(DeliveryError):
+    """An earlier chunk was accepted and a later chunk failed. Do not resend."""
+
+    def __init__(self, message_id: str) -> None:
+        super().__init__("partial_delivery", transient=False)
+        self.message_id = message_id
+
+
+class BriefDelivery(Protocol):
+    async def send_brief(self, message: BriefMessage) -> DeliveryReceipt:
+        """Send every part. Raise DeliveryError instead of a provider exception."""
+
+
+class BriefStore(Protocol):
+    async def list_relevant(self, guild_id: int, local_today: date) -> Sequence[BriefJobRecord]:
+        """Return open jobs and jobs on or after the local date."""
+
+    async def insert_job(self, draft: NewBriefJob) -> int | None:
+        """Insert one occurrence. Return None when that local date already exists."""
+
+    async def apply_skip(self, job_id: int, state: JobState, category: str) -> None:
+        """Close a scheduled job that will not be sent."""
+
+    async def unreconcile_claims(self, guild_id: int) -> int:
+        """Mark leftover claims unreconciled without sending them again."""
+
+    async def claim_due(
+        self, *, guild_id: int, now: datetime, local_today: date, limit: int
+    ) -> Sequence[ClaimedBrief]:
+        """Claim scheduled jobs that are due on the local date."""
+
+    async def mark_delivered(
+        self, job_id: int, claim_token: str, receipt: str, issue_count: int
+    ) -> bool:
+        """Store a receipt only when the claim token still matches."""
+
+    async def record_failure(
+        self,
+        job_id: int,
+        claim_token: str,
+        *,
+        category: str,
+        transient: bool,
+        max_attempts: int,
+        retry_at: datetime | None,
+        receipt: str | None,
+    ) -> None:
+        """Retry a transient failure or record a terminal failure."""

@@ -6,9 +6,11 @@ import discord
 
 from jdr_bot.domain import ChannelFacts, ChannelKind
 from jdr_bot.ports import (
+    BriefMessage,
     ChannelDirectoryError,
     DeliveryError,
     DeliveryReceipt,
+    PartialDelivery,
     ReminderNotice,
 )
 from jdr_bot.presentation import reminder_message
@@ -59,39 +61,74 @@ class DiscordReminderDelivery:
         self._client = client
 
     async def send_reminder(self, notice: ReminderNotice) -> DeliveryReceipt:
-        channel = await self._text_channel(notice.text_channel_id)
+        channel = await _require_text_channel(self._client, notice.text_channel_id)
         try:
             content = reminder_message(notice)
         except (ZoneInfoNotFoundError, ValueError):
             raise DeliveryError("invalid_timezone", transient=False) from None
         if len(content) > _MESSAGE_LIMIT:
             raise DeliveryError("message_too_long", transient=False)
+        message = await _send(channel, content, earlier_id=None)
+        return DeliveryReceipt(message_id=str(message.id))
+
+
+class DiscordBriefDelivery:
+    """Post brief chunks with mentions suppressed. Later-chunk failures are partial."""
+
+    def __init__(self, client: discord.Client) -> None:
+        self._client = client
+
+    async def send_brief(self, message: BriefMessage) -> DeliveryReceipt:
+        if not message.parts:
+            raise DeliveryError("empty_brief", transient=False)
+        if any(len(part) > _MESSAGE_LIMIT for part in message.parts):
+            raise DeliveryError("message_too_long", transient=False)
+        channel = await _require_text_channel(self._client, message.channel_id)
+        first_id: str | None = None
+        for part in message.parts:
+            sent = await _send(channel, part, earlier_id=first_id)
+            if first_id is None:
+                first_id = str(sent.id)
+        if first_id is None:
+            raise DeliveryError("empty_brief", transient=False)
+        return DeliveryReceipt(message_id=first_id)
+
+
+async def _require_text_channel(client: discord.Client, channel_id: int) -> discord.TextChannel:
+    channel = client.get_channel(channel_id)
+    if channel is None:
         try:
-            message = await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
-        except discord.Forbidden:
-            raise DeliveryError("channel_forbidden", transient=False) from None
+            channel = await client.fetch_channel(channel_id)
         except discord.NotFound:
             raise DeliveryError("channel_missing", transient=False) from None
+        except discord.Forbidden:
+            raise DeliveryError("channel_forbidden", transient=False) from None
         except discord.HTTPException as exc:
             transient = exc.status == 429 or exc.status >= 500
             raise DeliveryError("discord_http", transient=transient) from None
-        return DeliveryReceipt(message_id=str(message.id))
+    if not isinstance(channel, discord.TextChannel):
+        raise DeliveryError("channel_unavailable", transient=False)
+    return channel
 
-    async def _text_channel(self, channel_id: int) -> discord.TextChannel:
-        channel = self._client.get_channel(channel_id)
-        if channel is None:
-            try:
-                channel = await self._client.fetch_channel(channel_id)
-            except discord.NotFound:
-                raise DeliveryError("channel_missing", transient=False) from None
-            except discord.Forbidden:
-                raise DeliveryError("channel_forbidden", transient=False) from None
-            except discord.HTTPException as exc:
-                transient = exc.status == 429 or exc.status >= 500
-                raise DeliveryError("discord_http", transient=transient) from None
-        if not isinstance(channel, discord.TextChannel):
-            raise DeliveryError("channel_unavailable", transient=False)
-        return channel
+
+async def _send(
+    channel: discord.TextChannel, content: str, *, earlier_id: str | None
+) -> discord.Message:
+    try:
+        return await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+    except discord.Forbidden:
+        if earlier_id is not None:
+            raise PartialDelivery(earlier_id) from None
+        raise DeliveryError("channel_forbidden", transient=False) from None
+    except discord.NotFound:
+        if earlier_id is not None:
+            raise PartialDelivery(earlier_id) from None
+        raise DeliveryError("channel_missing", transient=False) from None
+    except discord.HTTPException as exc:
+        transient = exc.status == 429 or exc.status >= 500
+        if earlier_id is not None:
+            raise PartialDelivery(earlier_id) from None
+        raise DeliveryError("discord_http", transient=transient) from None
 
 
 def _facts(

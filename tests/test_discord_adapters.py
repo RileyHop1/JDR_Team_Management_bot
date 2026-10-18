@@ -7,9 +7,13 @@ import discord
 import pytest
 
 from jdr_bot.bot import TeamBot
-from jdr_bot.discord_adapters import DiscordChannelDirectory, DiscordReminderDelivery
+from jdr_bot.discord_adapters import (
+    DiscordBriefDelivery,
+    DiscordChannelDirectory,
+    DiscordReminderDelivery,
+)
 from jdr_bot.domain import ChannelKind
-from jdr_bot.ports import DeliveryError, ReminderNotice
+from jdr_bot.ports import BriefMessage, DeliveryError, PartialDelivery, ReminderNotice
 
 
 def http_error(status: int, body: str) -> discord.HTTPException:
@@ -130,3 +134,29 @@ async def test_channel_directory_fail_closed_and_classifies(settings):
         await denied.describe_channel(123, 99)
     assert error.value.category == "channel_forbidden"
     assert error.value.__cause__ is None
+
+
+async def test_brief_delivery_suppresses_mentions_and_reports_partial(settings, monkeypatch):
+    bot = TeamBot(settings, SimpleNamespace())
+    channel = text_channel(bot)
+    sent: list[str] = []
+
+    async def fake_send(self, content=None, **kwargs):
+        del self
+        assert kwargs["allowed_mentions"].everyone is False
+        if sent:
+            raise http_error(403, "synthetic-secret-body")
+        sent.append(str(content))
+        return SimpleNamespace(id=777)
+
+    monkeypatch.setattr(discord.TextChannel, "send", fake_send)
+    delivery = DiscordBriefDelivery(LookupClient(channel))
+    with pytest.raises(PartialDelivery) as error:
+        await delivery.send_brief(
+            BriefMessage(channel_id=10, parts=("Morning brief", "JDR-2 continues"))
+        )
+    assert error.value.message_id == "777"
+    assert error.value.transient is False
+    assert error.value.__cause__ is None
+    assert sent == ["Morning brief"]
+    assert "synthetic-secret-body" not in str(error.value)

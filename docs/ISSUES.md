@@ -38,7 +38,7 @@ Acceptance criteria:
 
 ## JDR-003: Jira morning brief
 
-Post a daily local-time brief of the team's current work without modifying Jira.
+Offline behavior is implemented under the provisional policy in [decision 0003](decisions/0003-jira-morning-brief.md): a read-only Jira Cloud search, a separate brief job type on the existing scheduler, weekday delivery, same-day recovery, and fake-adapter tests. Team confirmation of that policy and a brief demonstrated against test Jira and Discord are still outstanding, so this item is not complete. See [Jira morning brief](features/jira-morning-brief.md).
 
 Acceptance criteria:
 

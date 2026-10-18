@@ -6,10 +6,13 @@ import os
 from alembic import context
 from sqlalchemy.engine import Connection
 
+from jdr_bot.brief_storage import BriefJobRow
 from jdr_bot.storage import Base, create_engine
 
 
 def migrate(connection: Connection) -> None:
+    if BriefJobRow.__tablename__ not in Base.metadata.tables:
+        raise RuntimeError("brief job table is not registered")
     context.configure(connection=connection, target_metadata=Base.metadata)
     with context.begin_transaction():
         context.run_migrations()

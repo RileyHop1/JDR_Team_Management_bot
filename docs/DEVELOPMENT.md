@@ -52,7 +52,7 @@ A successful offline test is not evidence that this live check passed. Record th
 
 This check has not been run. Offline tests do not replace it.
 
-1. Complete the foundation smoke check above. Apply migrations through revision `0002`.
+1. Complete the foundation smoke check above. Apply migrations through revision `0003` (`alembic upgrade head`). The process rejects an older schema even when the morning brief is left unset.
 2. As an operator, run `/meeting create` with a synthetic title, a start a few minutes ahead, `BOT_TIMEZONE` or an explicit IANA zone, a text channel the bot can post in, a different voice channel it can view, and offset `1`.
 3. Confirm the ephemeral reply shows the meeting id, local start, UTC instant, and `1 min before: scheduled`. As a member without the operator role, confirm `/meeting list` returns `Operator role required.`
 4. Wait until one minute before the start. Confirm one reminder appears in the text channel, with no user or role mentions, and that `/meeting view` shows `delivered` plus a message id.
@@ -60,6 +60,18 @@ This check has not been run. Offline tests do not replace it.
 6. Cancel the meeting with `/meeting cancel` and confirm no further reminder is posted.
 
 Do not put real meeting titles, attendance, or tokens in the PR. Say only whether each step passed.
+
+## Jira morning brief smoke check (required before issue #7 is complete)
+
+This check has not been run. Offline tests do not replace it. Use a Jira user that cannot edit issues, and a private Discord channel.
+
+1. Complete the foundation smoke check. Apply migrations through revision `0003`.
+2. Set `BRIEF_CHANNEL_ID` to a text channel the bot can view and send in. Set `BRIEF_TIME` a few minutes ahead in `BOT_TIMEZONE`, on a weekday. Set `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `JIRA_USER_EMAIL`, and `JIRA_API_TOKEN`. Set `JIRA_STATUS_NAMES` to the team's confirmed statuses, or set `JIRA_JQL` to the confirmed query.
+3. Start the process. The log should include `brief_scheduler_enabled` and must not include the token, the email, or the JQL text.
+4. At the local brief time, confirm one message in the brief channel. It should list issue key, title, assignee or `unassigned`, status, and a browse URL, with no user or role mentions. If the query matches nothing, the message should be `No issues match the configured Jira query.` and must not invent issues.
+5. Restart the process the same day and confirm the brief is not posted a second time. A row whose local date has already passed should not be posted on a later day.
+
+Do not put real issue titles, assignee names, JQL, or tokens in the PR. Say only whether each step passed.
 
 ## Quality checks
 
@@ -85,6 +97,7 @@ Run `createdb` only once. The integration tests upgrade the schema, and the foun
 - `startup_failed`: verify the database is reachable and migrated, the bot token is valid, and the bot is installed in the configured guild. Raw exceptions are intentionally not printed because providers may include credentials.
 - Missing slash commands: check guild ID, installation scopes, and successful startup; commands are never registered globally.
 - Failed `/status`: inspect database health and migration revision. Queries and connection attempts have bounded timeouts.
-- Reminder jobs run in one background task inside this process. Jira, voice receive, and transcription are not implemented. Two processes on the same database can deliver the same reminder twice.
+- Reminder jobs and, when configured, the morning brief run in one background task inside this process. Voice receive and transcription are not implemented. Two processes on the same database can deliver the same reminder or brief twice.
 - A reminder older than 60 seconds is skipped, not sent late. See [meeting reminders](features/meeting-reminders.md) for command errors and job states.
+- A morning brief is sent only on its local weekday, including later that same day. Older brief rows are not posted late. See [Jira morning brief](features/jira-morning-brief.md). The brief stays off until its environment group is complete.
 - discord.py currently emits an upstream Python `audioop` deprecation warning; the project stays on Python 3.12 pending a tested upgrade.

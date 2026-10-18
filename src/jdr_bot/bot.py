@@ -9,12 +9,21 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from jdr_bot.authorization import can_manage
+from jdr_bot.brief_scheduler import BriefScheduler
+from jdr_bot.brief_service import BriefService
+from jdr_bot.brief_storage import SqlBriefStore
 from jdr_bot.config import Settings
-from jdr_bot.discord_adapters import DiscordChannelDirectory, DiscordReminderDelivery
+from jdr_bot.discord_adapters import (
+    DiscordBriefDelivery,
+    DiscordChannelDirectory,
+    DiscordReminderDelivery,
+)
+from jdr_bot.jira import HttpJiraReader
 from jdr_bot.meeting_commands import MeetingCommands
 from jdr_bot.meeting_service import MeetingService
 from jdr_bot.ports import ReminderRunner, SystemClock
 from jdr_bot.reminder_scheduler import ReminderScheduler
+from jdr_bot.scheduler import ApplicationScheduler
 from jdr_bot.storage import SqlMeetingStore, check_database
 
 logger = logging.getLogger(__name__)
@@ -38,6 +47,7 @@ class TeamBot(discord.Client):
         self.settings = settings
         self.engine = engine
         self._closing = False
+        self._jira: HttpJiraReader | None = None
         self._scheduler_task: asyncio.Task[None] | None = None
         store = SqlMeetingStore(engine)
         clock = SystemClock()
@@ -46,11 +56,10 @@ class TeamBot(discord.Client):
             if meetings is not None
             else MeetingService(store, DiscordChannelDirectory(self), clock)
         )
-        self.scheduler = (
-            scheduler
-            if scheduler is not None
-            else ReminderScheduler(store, DiscordReminderDelivery(self), clock)
-        )
+        if scheduler is not None:
+            self.scheduler = scheduler
+        else:
+            self.scheduler = self._build_scheduler(store, clock)
         self.tree = app_commands.CommandTree(self)
         self.guild = discord.Object(id=settings.discord_guild_id)
         self.tree.add_command(
@@ -85,10 +94,39 @@ class TeamBot(discord.Client):
         self._start_scheduler()
 
     async def close(self) -> None:
-        """Cancel the reminder task before closing the Discord connection."""
+        """Cancel the scheduler task, close Jira, then close the Discord connection."""
         self._closing = True
         await self._stop_scheduler()
+        if self._jira is not None:
+            await self._jira.aclose()
         await super().close()
+
+    def _build_scheduler(self, store: SqlMeetingStore, clock: SystemClock) -> ApplicationScheduler:
+        """Poll reminders and the brief on one task. The brief stays off until configured."""
+        reminders = ReminderScheduler(store, DiscordReminderDelivery(self), clock)
+        schedule = self.settings.brief_schedule()
+        briefs: BriefScheduler | None = None
+        email = self.settings.jira_user_email
+        token = self.settings.jira_api_token
+        if schedule is not None and email is not None and token is not None:
+            reader = HttpJiraReader(
+                base_url=schedule.browse_base_url,
+                email=email,
+                api_token=token.get_secret_value(),
+            )
+            self._jira = reader
+            briefs = BriefScheduler(
+                SqlBriefStore(self.engine),
+                DiscordBriefDelivery(self),
+                BriefService(reader, schedule),
+                clock,
+                schedule,
+            )
+        if briefs is None:
+            logger.info("brief_scheduler_disabled")
+        else:
+            logger.info("brief_scheduler_enabled")
+        return ApplicationScheduler(reminders, briefs)
 
     def _start_scheduler(self) -> None:
         if self._closing:
@@ -96,10 +134,10 @@ class TeamBot(discord.Client):
         current = self._scheduler_task
         if current is not None and not current.done():
             return
-        task = asyncio.create_task(self.scheduler.serve(), name="reminder-scheduler")
+        task = asyncio.create_task(self.scheduler.serve(), name="scheduler")
         task.add_done_callback(self._watch_scheduler)
         self._scheduler_task = task
-        logger.info("reminder_scheduler_started")
+        logger.info("scheduler_started")
 
     async def _stop_scheduler(self) -> None:
         task = self._scheduler_task
@@ -112,11 +150,11 @@ class TeamBot(discord.Client):
 
     def _watch_scheduler(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
-            logger.info("reminder_scheduler_stopped")
+            logger.info("scheduler_stopped")
             return
         error = task.exception()
         if error is not None:
-            logger.error("reminder_scheduler_stopped error_type=%s", type(error).__name__)
+            logger.error("scheduler_stopped error_type=%s", type(error).__name__)
 
     async def ping(self, interaction: discord.Interaction[discord.Client]) -> None:
         """Reply privately to a guild-scoped responsiveness check."""

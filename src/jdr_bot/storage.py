@@ -42,7 +42,7 @@ from jdr_bot.domain import (
 )
 from jdr_bot.ports import MeetingConflict, MeetingNotEditable, MeetingNotFound, ReminderInProgress
 
-SCHEMA_REVISION = "0002"
+SCHEMA_REVISION = "0003"
 
 _ACTIVE_JOBS = "state IN ('scheduled', 'claimed')"
 _OPEN_OCCURRENCES = (

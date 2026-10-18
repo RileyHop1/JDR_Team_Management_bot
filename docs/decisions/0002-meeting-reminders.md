@@ -33,4 +33,4 @@ Changing only the title keeps reminder job ids. Changing the start, zone, offset
 
 ## Deployment
 
-The scheduler starts after the schema check and stops during shutdown. If its task ends while the gateway session is still up, `on_ready` starts it again. Two processes against the same database are not coordinated and can both deliver. The morning-brief scheduler is a separate job type and is not part of this decision.
+The scheduler starts after the schema check and stops during shutdown. If its task ends while the gateway session is still up, `on_ready` starts it again. Two processes against the same database are not coordinated and can both deliver. The morning brief is a separate job type on the same poll task; its policy is [decision 0003](0003-jira-morning-brief.md), not this one.
