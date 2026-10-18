@@ -30,6 +30,7 @@ async def test_postgres_migration_roundtrip_and_isolation():
         await migrate("upgrade", "head")
         await migrate("upgrade", "head")  # Repeated setup must be safe.
         async with engine.begin() as connection:
+            await connection.execute(text("DELETE FROM brief_jobs"))
             await connection.execute(text("DELETE FROM reminder_jobs"))
             await connection.execute(text("DELETE FROM meetings"))
             await connection.execute(text("DELETE FROM guild_configurations"))
@@ -68,6 +69,9 @@ async def test_postgres_migration_roundtrip_and_isolation():
         with pytest.raises(ProgrammingError):
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT * FROM meetings"))
+        with pytest.raises(ProgrammingError):
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT * FROM brief_jobs"))
         await migrate("upgrade", "head")
         await check_database(engine)
     finally:

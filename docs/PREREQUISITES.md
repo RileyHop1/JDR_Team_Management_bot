@@ -42,8 +42,8 @@ Derive concrete host allowlists from chosen services; do not enable unrestricted
 ## Decisions to resolve before the relevant feature
 
 1. Are all meetings held in Discord voice channels? Third-party meeting platforms need separate authorization and adapters.
-2. What time zone, morning time, weekend policy, reminder offsets, and missed-job behavior should the team use? Reminder offsets, the `BOT_TIMEZONE` default, and missed-reminder behavior are provisionally recorded in [decision 0002](decisions/0002-meeting-reminders.md). Morning time and weekend policy remain open for the brief.
-3. Which Jira deployment, project/filter, and exact statuses mean “being worked on”? Should the brief include all project issues or just the team's assigned work?
+2. What time zone, morning time, weekend policy, reminder offsets, and missed-job behavior should the team use? Reminder offsets, the `BOT_TIMEZONE` default, and missed-reminder behavior are provisionally recorded in [decision 0002](decisions/0002-meeting-reminders.md). The brief's explicit `BRIEF_TIME`, weekday-only schedule, and same-day recovery are provisionally recorded in [decision 0003](decisions/0003-jira-morning-brief.md).
+3. Which Jira deployment, project/filter, and exact statuses mean “being worked on”? Should the brief include all project issues or just the team's assigned work? Decision 0003 provisionally uses Jira Cloud, an explicit status list or `JIRA_JQL`, and every matching issue in the project (no assignee filter). Confirm that before treating it as final.
 4. Who may configure schedules, start recording, stop recording, access transcripts, and request deletion? How will notice and consent work for late arrivals? Meeting create, list, view, update, and cancel are provisionally limited to `DISCORD_OPERATOR_ROLE_ID` ([decision 0002](decisions/0002-meeting-reminders.md)). Recording and transcript access remain open.
 5. What recording/transcript retention, provider data policy, language support, budget, and maximum meeting duration are acceptable?
 6. Where will the bot run continuously, and does that environment support Discord voice networking?

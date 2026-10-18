@@ -1,11 +1,14 @@
 """Validated process configuration; secret values must never be logged."""
 
+from typing import Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
+
+from jdr_bot.brief import BriefSchedule, compile_schedule, validated_email
 
 
 class Settings(BaseSettings):
@@ -18,6 +21,14 @@ class Settings(BaseSettings):
     discord_operator_role_id: int = Field(gt=0)
     database_url: SecretStr
     bot_timezone: str = "UTC"
+    brief_channel_id: int | None = None
+    brief_time: str | None = None
+    jira_base_url: str | None = None
+    jira_project_key: str | None = None
+    jira_status_names: str | None = None
+    jira_jql: str | None = None
+    jira_user_email: str | None = None
+    jira_api_token: SecretStr | None = None
 
     @field_validator("discord_bot_token")
     @classmethod
@@ -45,3 +56,131 @@ class Settings(BaseSettings):
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("use an IANA time zone such as America/Los_Angeles") from None
         return value
+
+    @field_validator("brief_channel_id", mode="before")
+    @classmethod
+    def blank_channel(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator(
+        "brief_time",
+        "jira_base_url",
+        "jira_project_key",
+        "jira_status_names",
+        "jira_jql",
+        "jira_user_email",
+        mode="before",
+    )
+    @classmethod
+    def blank_optional(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("jira_api_token", mode="before")
+    @classmethod
+    def blank_token(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_brief_group(self) -> Self:
+        """Require the whole brief group, or none of it. Messages omit values."""
+        if not _brief_requested(self):
+            return self
+        missing = [
+            name
+            for name, present in (
+                ("brief_channel_id", self.brief_channel_id is not None),
+                ("brief_time", self.brief_time is not None),
+                ("jira_base_url", self.jira_base_url is not None),
+                ("jira_project_key", self.jira_project_key is not None),
+                ("jira_user_email", self.jira_user_email is not None),
+                ("jira_api_token", self.jira_api_token is not None),
+            )
+            if not present
+        ]
+        if self.jira_jql is None and self.jira_status_names is None:
+            missing.append("jira_status_names")
+        if missing:
+            raise ValueError("missing brief settings: " + ", ".join(missing))
+        token = self.jira_api_token
+        channel_id = self.brief_channel_id
+        brief_time = self.brief_time
+        base_url = self.jira_base_url
+        project_key = self.jira_project_key
+        email = self.jira_user_email
+        if (
+            token is None
+            or channel_id is None
+            or brief_time is None
+            or base_url is None
+            or project_key is None
+            or email is None
+            or token.get_secret_value().startswith("replace-")
+        ):
+            raise ValueError("set a real Jira API token in secure configuration")
+        validated_email(email)
+        compile_schedule(
+            guild_id=self.discord_guild_id,
+            channel_id=channel_id,
+            timezone_name=self.bot_timezone,
+            brief_time=brief_time,
+            base_url=base_url,
+            project_key=project_key,
+            status_names=self.jira_status_names,
+            custom_jql=self.jira_jql,
+        )
+        return self
+
+    def brief_schedule(self) -> BriefSchedule | None:
+        """Build the schedule seam used by the brief. None leaves the brief off.
+
+        Issue #11 can replace this method with stored guild settings. Credentials
+        stay in the environment and are not part of the schedule.
+        """
+        channel_id = self.brief_channel_id
+        brief_time = self.brief_time
+        base_url = self.jira_base_url
+        project_key = self.jira_project_key
+        email = self.jira_user_email
+        if (
+            channel_id is None
+            or brief_time is None
+            or base_url is None
+            or project_key is None
+            or email is None
+            or self.jira_api_token is None
+        ):
+            return None
+        return compile_schedule(
+            guild_id=self.discord_guild_id,
+            channel_id=channel_id,
+            timezone_name=self.bot_timezone,
+            brief_time=brief_time,
+            base_url=base_url,
+            project_key=project_key,
+            status_names=self.jira_status_names,
+            custom_jql=self.jira_jql,
+        )
+
+
+def _brief_requested(settings: Settings) -> bool:
+    token = settings.jira_api_token
+    return any(
+        (
+            settings.brief_channel_id is not None,
+            settings.brief_time is not None,
+            settings.jira_base_url is not None,
+            settings.jira_project_key is not None,
+            settings.jira_status_names is not None,
+            settings.jira_jql is not None,
+            settings.jira_user_email is not None,
+            token is not None and bool(token.get_secret_value().strip()),
+        )
+    )

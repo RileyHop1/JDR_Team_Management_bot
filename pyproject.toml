@@ -9,6 +9,7 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0,<3",
   "psycopg[binary]>=3.2,<4",
   "alembic>=1.16,<2",
+  "httpx>=0.27,<1",
 ]
 
 [build-system]

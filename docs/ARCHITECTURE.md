@@ -1,6 +1,6 @@
 # Proposed architecture
 
-**Status:** overall design proposal. Configuration, basic Discord commands, the meeting service, durable reminder jobs, and the single-process scheduler are implemented. Reminder policy is provisional in [decision 0002](decisions/0002-meeting-reminders.md). Jira and recording remain planned. Record provider and library selections in architecture decision records before depending on them.
+**Status:** overall design proposal. Configuration, basic Discord commands, the meeting service, durable reminder jobs, the read-only Jira brief, and the single-process scheduler are implemented. Reminder policy is provisional in [decision 0002](decisions/0002-meeting-reminders.md). Brief policy is provisional in [decision 0003](decisions/0003-jira-morning-brief.md). Recording remains planned. Record provider and library selections in architecture decision records before depending on them.
 
 ## System shape
 
@@ -47,7 +47,7 @@ Use foreign keys and uniqueness constraints for scope and job identities. Decide
 
 ## Scheduling and delivery
 
-Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Reminder recovery is specified in [decision 0002](decisions/0002-meeting-reminders.md) and still needs team confirmation: skip offsets outside the 60-second grace, keep future reminders, and do not resend a reminder whose receipt could not be stored. Sending a missed morning brief once on same-day recovery remains an unconfirmed proposal.
+Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Reminder recovery is specified in [decision 0002](decisions/0002-meeting-reminders.md) and still needs team confirmation: skip offsets outside the 60-second grace, keep future reminders, and do not resend a reminder whose receipt could not be stored. Morning-brief recovery is specified in [decision 0003](decisions/0003-jira-morning-brief.md) and still needs team confirmation: send a missed brief once on the same local day, skip older weekdays, and do not resend a brief whose receipt could not be stored.
 
 Use transactions to claim jobs and finite retries for transient failures. Discord delivery and database updates cannot be atomic: a crash after sending can cause a duplicate. Retain message receipts, reconcile when possible, and document the remaining duplicate window rather than promising exactly-once delivery.
 

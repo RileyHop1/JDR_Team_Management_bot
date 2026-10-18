@@ -37,6 +37,7 @@ async def disposable_store():
 
 async def clear_rows(engine) -> None:
     async with engine.begin() as connection:
+        await connection.execute(text("DELETE FROM brief_jobs"))
         await connection.execute(text("DELETE FROM reminder_jobs"))
         await connection.execute(text("DELETE FROM meetings"))
         await connection.execute(text("DELETE FROM guild_configurations"))
