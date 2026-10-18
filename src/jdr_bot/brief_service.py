@@ -55,12 +55,17 @@ class BriefService:
                         assignee_display_name=issue.assignee_display_name,
                     )
                 )
-            if truncated or page.is_last or page.next_page_token is None:
+            if truncated or page.is_last:
                 break
-            if page.next_page_token in seen:
+            next_token = _usable_token(page.next_page_token)
+            if next_token is None:
+                # Jira said this page is not the last one and gave no way to continue.
+                truncated = True
+                break
+            if next_token in seen:
                 raise BriefQueryError("malformed_response", transient=False)
-            seen.add(page.next_page_token)
-            token = page.next_page_token
+            seen.add(next_token)
+            token = next_token
         else:
             # The page cap was reached with a further page still advertised.
             truncated = True
@@ -71,3 +76,13 @@ class BriefService:
             issues=tuple(collected),
             truncated=truncated,
         )
+
+
+def _usable_token(token: str | None) -> str | None:
+    """Ignore a blank token the same way as a missing one."""
+    if token is None:
+        return None
+    stripped = token.strip()
+    if not stripped:
+        return None
+    return stripped

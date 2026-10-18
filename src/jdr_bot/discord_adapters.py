@@ -83,7 +83,9 @@ class DiscordBriefDelivery:
             raise DeliveryError("empty_brief", transient=False)
         if any(len(part) > _MESSAGE_LIMIT for part in message.parts):
             raise DeliveryError("message_too_long", transient=False)
-        channel = await _require_text_channel(self._client, message.channel_id)
+        channel = await _require_text_channel(
+            self._client, message.channel_id, guild_id=message.guild_id
+        )
         first_id: str | None = None
         for part in message.parts:
             sent = await _send(channel, part, earlier_id=first_id)
@@ -94,7 +96,9 @@ class DiscordBriefDelivery:
         return DeliveryReceipt(message_id=first_id)
 
 
-async def _require_text_channel(client: discord.Client, channel_id: int) -> discord.TextChannel:
+async def _require_text_channel(
+    client: discord.Client, channel_id: int, *, guild_id: int | None = None
+) -> discord.TextChannel:
     channel = client.get_channel(channel_id)
     if channel is None:
         try:
@@ -108,6 +112,8 @@ async def _require_text_channel(client: discord.Client, channel_id: int) -> disc
             raise DeliveryError("discord_http", transient=transient) from None
     if not isinstance(channel, discord.TextChannel):
         raise DeliveryError("channel_unavailable", transient=False)
+    if guild_id is not None and channel.guild.id != guild_id:
+        raise DeliveryError("channel_wrong_guild", transient=False)
     return channel
 
 

@@ -3,6 +3,7 @@
 from datetime import date
 
 from jdr_bot.brief import (
+    ASSIGNEE_NAME_UNAVAILABLE,
     EMPTY_BRIEF_LINE,
     BriefDocument,
     BriefIssueView,
@@ -33,6 +34,7 @@ def test_render_includes_key_title_assignee_status_and_url():
                 (
                     BriefIssueView("JDR-1", "Ship the brief", "In Progress", "Ada Lovelace"),
                     BriefIssueView("JDR-2", "Write tests", "Review", None),
+                    BriefIssueView("JDR-3", "Hidden name", "Review", ASSIGNEE_NAME_UNAVAILABLE),
                 )
             ),
             local_date=DAY,
@@ -42,6 +44,8 @@ def test_render_includes_key_title_assignee_status_and_url():
     assert "JDR-1: Ship the brief | Ada Lovelace | In Progress" in text
     assert "https://example.atlassian.net/browse/JDR-1" in text
     assert "JDR-2: Write tests | unassigned | Review" in text
+    assert f"JDR-3: Hidden name | {ASSIGNEE_NAME_UNAVAILABLE} | Review" in text
+    assert "JDR-3: Hidden name | unassigned" not in text
     assert "https://example.atlassian.net/browse/JDR-2" in text
     assert "blocker" not in text.lower()
     assert "progress report" not in text.lower()

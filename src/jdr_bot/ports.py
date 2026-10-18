@@ -1,7 +1,7 @@
 """Interfaces for storage, Discord, Jira, and the clock. Implementations are injected."""
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 from jdr_bot.brief import BriefJobRecord, ClaimedBrief, NewBriefJob
@@ -170,9 +170,12 @@ class ReminderRunner(Protocol):
 class BriefQueryError(Exception):
     """A Jira read failed. ``category`` is safe to store and show to operators."""
 
-    def __init__(self, category: str, *, transient: bool) -> None:
+    def __init__(
+        self, category: str, *, transient: bool, retry_after: timedelta | None = None
+    ) -> None:
         self.category = category
         self.transient = transient
+        self.retry_after = retry_after
         super().__init__(category)
 
 
@@ -213,7 +216,8 @@ class JiraReader(Protocol):
 
 
 class BriefMessage:
-    def __init__(self, *, channel_id: int, parts: tuple[str, ...]) -> None:
+    def __init__(self, *, guild_id: int, channel_id: int, parts: tuple[str, ...]) -> None:
+        self.guild_id = guild_id
         self.channel_id = channel_id
         self.parts = parts
 
@@ -243,6 +247,13 @@ class BriefStore(Protocol):
 
     async def unreconcile_claims(self, guild_id: int) -> int:
         """Mark leftover claims unreconciled without sending them again."""
+
+    async def release_claim(self, job_id: int, claim_token: str) -> None:
+        """Return a claim to scheduled when no message was sent.
+
+        The attempt is not consumed. A claim that may already have reached Discord
+        stays claimed so the next poll can mark it unreconciled instead.
+        """
 
     async def claim_due(
         self, *, guild_id: int, now: datetime, local_today: date, limit: int

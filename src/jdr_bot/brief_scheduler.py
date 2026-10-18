@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from jdr_bot.brief import (
     BriefSchedule,
@@ -33,7 +33,9 @@ class BriefScheduler:
 
     A crash after Discord accepts a message but before the receipt is stored
     leaves the job claimed. The next poll marks that claim unreconciled and
-    does not send it again. See docs/decisions/0003-jira-morning-brief.md.
+    does not send it again. Cancellation during the Jira read, before any
+    send, releases that claim so the same local day can still be delivered.
+    See docs/decisions/0003-jira-morning-brief.md.
     """
 
     def __init__(
@@ -100,13 +102,16 @@ class BriefScheduler:
     async def _deliver(self, job: ClaimedBrief, now: datetime) -> None:
         try:
             document = await self._service.collect()
+        except asyncio.CancelledError:
+            await self._release_unsent(job)
+            raise
         except BriefQueryError as error:
             await self._query_failed(job, error, now)
             return
         parts = render_brief(document, local_date=job.local_date, timezone_name=job.timezone_name)
         try:
             receipt = await self._delivery.send_brief(
-                BriefMessage(channel_id=job.channel_id, parts=parts)
+                BriefMessage(guild_id=job.guild_id, channel_id=job.channel_id, parts=parts)
             )
         except PartialDelivery as error:
             await self._store.record_failure(
@@ -156,7 +161,7 @@ class BriefScheduler:
                 category=error.category,
                 transient=True,
                 max_attempts=self._max_attempts,
-                retry_at=now + retry_delay(job.attempt_count),
+                retry_at=_retry_at(now, job.attempt_count, error.retry_after),
                 receipt=None,
             )
             return
@@ -165,6 +170,7 @@ class BriefScheduler:
         try:
             sent = await self._delivery.send_brief(
                 BriefMessage(
+                    guild_id=job.guild_id,
                     channel_id=job.channel_id,
                     parts=render_failure(
                         project_key=self._schedule.project_key,
@@ -178,19 +184,18 @@ class BriefScheduler:
             receipt_id = delivery_error.message_id
             category = delivery_error.category
         except DeliveryError as delivery_error:
-            await self._store.record_failure(
-                job.job_id,
-                job.claim_token,
-                category=delivery_error.category,
-                transient=False,
-                max_attempts=self._max_attempts,
-                retry_at=None,
-                receipt=None,
-            )
             logger.error(
-                "brief_failure_notice_failed job_id=%s category=%s",
+                "brief_failure_notice_failed job_id=%s jira_category=%s discord_category=%s",
                 job.job_id,
+                error.category,
                 delivery_error.category,
+            )
+            await self._retry_or_fail(
+                job,
+                error.category,
+                delivery_error.transient,
+                now,
+                receipt=None,
             )
             return
         else:
@@ -232,3 +237,34 @@ class BriefScheduler:
             category,
             transient,
         )
+
+    async def _release_unsent(self, job: ClaimedBrief) -> None:
+        """Drop a claim that never reached Discord, even if this task is cancelling."""
+        task = asyncio.current_task()
+        paused = 0
+        if task is not None:
+            while task.cancelling():
+                task.uncancel()
+                paused += 1
+        try:
+            await self._store.release_claim(job.job_id, job.claim_token)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "brief_claim_release_failed job_id=%s error_type=%s",
+                job.job_id,
+                type(exc).__name__,
+            )
+        finally:
+            if task is not None:
+                for _ in range(paused):
+                    task.cancel()
+
+
+def _retry_at(now: datetime, attempt_count: int, retry_after: timedelta | None) -> datetime:
+    """Wait at least the provider delay, and at least the usual backoff."""
+    delay = retry_delay(attempt_count)
+    if retry_after is not None and retry_after > delay:
+        delay = retry_after
+    return now + delay

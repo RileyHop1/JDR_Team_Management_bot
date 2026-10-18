@@ -13,7 +13,7 @@ from jdr_bot.brief_scheduler import BriefScheduler
 from jdr_bot.brief_service import BriefService
 from jdr_bot.brief_storage import SqlBriefStore
 from jdr_bot.domain import JobState
-from jdr_bot.ports import JiraIssue, JiraPage
+from jdr_bot.ports import BriefQueryError, JiraIssue, JiraPage, PartialDelivery
 from jdr_bot.storage import create_engine
 from tests.brief_fakes import FakeBriefDelivery, FakeJira, utc_schedule
 from tests.support import FakeClock
@@ -123,5 +123,171 @@ async def test_postgres_brief_constraints_and_downgrade():
             await connection.execute(text("SELECT id FROM meetings"))
     finally:
         await migrate(url, "upgrade", "head")
+        await clear_rows(engine)
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_postgres_retry_waits_and_covers_unreconcile_and_partial():
+    url, engine = await disposable_engine()
+    del url
+    try:
+        clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+        schedule = utc_schedule()
+        delivery = FakeBriefDelivery()
+        reader = FakeJira(
+            pages=[
+                JiraPage(
+                    issues=(JiraIssue("JDR-1", "Ship the brief", "In Progress", "Ada"),),
+                    next_page_token=None,
+                    is_last=True,
+                )
+            ],
+            errors=[BriefQueryError("rate_limited", transient=True)],
+        )
+        await BriefScheduler(
+            SqlBriefStore(engine), delivery, BriefService(reader, schedule), clock, schedule
+        ).run_once()
+        assert delivery.sent == []
+        clock.advance(seconds=5)
+        await BriefScheduler(
+            SqlBriefStore(engine), delivery, BriefService(reader, schedule), clock, schedule
+        ).run_once()
+        waiting = await SqlBriefStore(engine).list_relevant(123, date(2026, 6, 1))
+        assert delivery.sent == []
+        assert waiting[0].state is JobState.SCHEDULED
+        assert waiting[0].attempt_count == 1
+        assert waiting[0].failure_category == "rate_limited"
+        clock.advance(seconds=10)
+        await BriefScheduler(
+            SqlBriefStore(engine), delivery, BriefService(reader, schedule), clock, schedule
+        ).run_once()
+        assert len(delivery.sent) == 1
+
+        await clear_rows(engine)
+        clock = FakeClock(datetime(2026, 6, 2, 9, tzinfo=UTC_TZ))
+        lost = FakeBriefDelivery()
+
+        class LoseReceipt(SqlBriefStore):
+            def __init__(self) -> None:
+                super().__init__(engine)
+                self.failed = False
+
+            async def mark_delivered(
+                self, job_id: int, claim_token: str, receipt: str, issue_count: int
+            ) -> bool:
+                if not self.failed:
+                    self.failed = True
+                    raise RuntimeError("synthetic-disk")
+                return await super().mark_delivered(job_id, claim_token, receipt, issue_count)
+
+        lost_reader = FakeJira(
+            pages=[
+                JiraPage(
+                    issues=(JiraIssue("JDR-2", "Ship the brief", "In Progress", "Ada"),),
+                    next_page_token=None,
+                    is_last=True,
+                )
+            ]
+        )
+        await BriefScheduler(
+            LoseReceipt(), lost, BriefService(lost_reader, schedule), clock, schedule
+        ).run_once()
+        assert len(lost.sent) == 1
+        await BriefScheduler(
+            SqlBriefStore(engine), lost, BriefService(lost_reader, schedule), clock, schedule
+        ).run_once()
+        rows = await SqlBriefStore(engine).list_relevant(123, date(2026, 6, 2))
+        original = next(row for row in rows if row.local_date == date(2026, 6, 2))
+        assert original.state is JobState.UNRECONCILED
+        assert original.failure_category == "receipt_unknown"
+        assert len(lost.sent) == 1
+
+        await clear_rows(engine)
+        clock = FakeClock(datetime(2026, 6, 3, 9, tzinfo=UTC_TZ))
+        partial = FakeBriefDelivery()
+        partial.failures = [PartialDelivery("msg-partial")]
+        partial_reader = FakeJira(
+            pages=[
+                JiraPage(
+                    issues=(JiraIssue("JDR-3", "Ship the brief", "In Progress", "Ada"),),
+                    next_page_token=None,
+                    is_last=True,
+                )
+            ]
+        )
+        await BriefScheduler(
+            SqlBriefStore(engine),
+            partial,
+            BriefService(partial_reader, schedule),
+            clock,
+            schedule,
+        ).run_once()
+        failed = await SqlBriefStore(engine).list_relevant(123, date(2026, 6, 3))
+        assert failed[0].state is JobState.FAILED
+        assert failed[0].failure_category == "partial_delivery"
+        assert failed[0].delivery_receipt == "msg-partial"
+        await BriefScheduler(
+            SqlBriefStore(engine),
+            partial,
+            BriefService(partial_reader, schedule),
+            clock,
+            schedule,
+        ).run_once()
+        assert partial.sent == []
+    finally:
+        await clear_rows(engine)
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_postgres_cancel_during_read_releases_the_claim():
+    url, engine = await disposable_engine()
+    del url
+    try:
+        clock = FakeClock(datetime(2026, 6, 4, 9, tzinfo=UTC_TZ))
+        schedule = utc_schedule()
+
+        class Hang(FakeJira):
+            def __init__(self) -> None:
+                super().__init__()
+                self.started = asyncio.Event()
+
+            async def search(self, request):
+                self.requests.append(request)
+                self.started.set()
+                await asyncio.Event().wait()
+                return JiraPage(issues=(), next_page_token=None, is_last=True)
+
+        reader = Hang()
+        delivery = FakeBriefDelivery()
+        task = asyncio.create_task(
+            BriefScheduler(
+                SqlBriefStore(engine), delivery, BriefService(reader, schedule), clock, schedule
+            ).run_once()
+        )
+        await reader.started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        released = await SqlBriefStore(engine).list_relevant(123, date(2026, 6, 4))
+        assert released[0].state is JobState.SCHEDULED
+        assert released[0].attempt_count == 0
+        assert released[0].claim_token is None
+        follow = FakeJira(
+            pages=[
+                JiraPage(
+                    issues=(JiraIssue("JDR-4", "Ship the brief", "In Progress", None),),
+                    next_page_token=None,
+                    is_last=True,
+                )
+            ]
+        )
+        await BriefScheduler(
+            SqlBriefStore(engine), delivery, BriefService(follow, schedule), clock, schedule
+        ).run_once()
+        assert len(delivery.sent) == 1
+        assert "unassigned" in delivery.sent[0][0]
+    finally:
         await clear_rows(engine)
         await engine.dispose()

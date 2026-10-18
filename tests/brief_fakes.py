@@ -78,6 +78,18 @@ class MemoryBriefStore:
             claim_token=None,
         )
 
+    async def release_claim(self, job_id: int, claim_token: str) -> None:
+        job = self.jobs.get(job_id)
+        if job is None or job.state is not JobState.CLAIMED or job.claim_token != claim_token:
+            return
+        attempt_count = job.attempt_count - 1 if job.attempt_count > 0 else 0
+        self.jobs[job_id] = replace(
+            job,
+            state=JobState.SCHEDULED,
+            claim_token=None,
+            attempt_count=attempt_count,
+        )
+
     async def unreconcile_claims(self, guild_id: int) -> int:
         count = 0
         for job_id, job in list(self.jobs.items()):

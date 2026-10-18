@@ -31,6 +31,8 @@ _SAFE_CATEGORY = re.compile(r"[a-z0-9_]{1,64}\Z")
 
 EMPTY_BRIEF_LINE = "No issues match the configured Jira query."
 FAILURE_BRIEF_PREFIX = "The morning brief could not be loaded"
+# Jira returned an assignee object but no display name. This is not "unassigned".
+ASSIGNEE_NAME_UNAVAILABLE = "assignee name unavailable"
 
 _OPEN_STATES = frozenset({JobState.SCHEDULED, JobState.CLAIMED})
 _OCCUPYING_STATES = frozenset(

@@ -122,6 +122,25 @@ class SqlBriefStore:
                 )
             )
 
+    async def release_claim(self, job_id: int, claim_token: str) -> None:
+        async with self._sessions() as session, session.begin():
+            job = await session.scalar(
+                select(BriefJobRow)
+                .where(
+                    BriefJobRow.id == job_id,
+                    BriefJobRow.claim_token == claim_token,
+                    BriefJobRow.state == JobState.CLAIMED.value,
+                )
+                .with_for_update()
+            )
+            if job is None:
+                return
+            if job.attempt_count > 0:
+                job.attempt_count -= 1
+            job.state = JobState.SCHEDULED.value
+            job.claim_token = None
+            job.claimed_at = None
+
     async def unreconcile_claims(self, guild_id: int) -> int:
         async with self._sessions() as session, session.begin():
             result = await session.scalars(

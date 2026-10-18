@@ -30,7 +30,11 @@ Jobs are rows in `brief_jobs`. The reminder scheduler does not own them. One pro
 
 A brief is sent on its local weekday once it is due, including later the same local day if the process was down. It is not sent on Saturday or Sunday, and a missed weekday is not sent on a later day. A spring-forward gap is skipped (`dst_gap`). A fall-back overlap uses the earlier UTC instant.
 
-Empty Jira results are delivered as `No issues match the configured Jira query.` A failed query, after the retry budget, is `The morning brief could not be loaded (<category>).` Transient Jira HTTP 429, timeouts, and HTTP 5xx retry twice more (15 seconds, then 30 seconds). Access denial does not retry. A claim whose receipt was not stored is not sent again (`unreconciled` / `receipt_unknown`).
+Empty Jira results are delivered as `No issues match the configured Jira query.` A failed query, after the retry budget, is `The morning brief could not be loaded (<category>).` A 200 body that is not a search result is that failure, not the empty line. A missing assignee is `unassigned`. An assignee object with no display name is `assignee name unavailable`.
+
+Transient Jira HTTP 429, timeouts, and HTTP 5xx retry twice more (15 seconds, then 30 seconds). HTTP 429 waits at least the `Retry-After` delay, capped at 15 minutes. Access denial does not retry the query. A transient Discord error while posting the failure notice retries and keeps the Jira category. A claim whose receipt was not stored is not sent again (`unreconciled` / `receipt_unknown`). Shutdown during the Jira read releases the claim so the same local day can still be sent. Shutdown after a send has started does not send that day again.
+
+The brief channel must belong to `DISCORD_GUILD_ID`. A text channel in another guild is not used.
 
 ## Operation
 
@@ -45,8 +49,10 @@ Two processes on the same database can deliver the same brief twice. Discord and
 - `JIRA_BASE_URL must be an https://<site>.atlassian.net URL`: the URL is not Cloud-shaped, or it contains credentials or a path.
 - `The morning brief could not be loaded (access_denied)`: Jira rejected the credentials or the query permission. The job is failed and is not retried that day.
 - `The morning brief could not be loaded (rate_limited)` or `(timeout)`: the retry budget was used up the same day.
-- `No issues match the configured Jira query.`: the query succeeded and returned nothing.
-- `Showing the first N matching issues.`: the page or issue cap was reached. The rest are not invented.
+- `No issues match the configured Jira query.`: the query succeeded and returned an `issues` array with nothing in it. The message also has the morning-brief header and the status or custom-query line.
+- `assignee name unavailable`: Jira returned an assignee without a display name. The issue is not unassigned.
+- `Showing the first N matching issues.`: the page or issue cap was reached, or Jira said another page exists and did not give a token. The rest are not invented.
+- `channel_wrong_guild`: `BRIEF_CHANNEL_ID` is a text channel in a different guild from `DISCORD_GUILD_ID`. Nothing is posted there.
 - `skipped (missed_day)`: the local date ended before a successful send. It will not be posted the next day.
 - `skipped (dst_gap)`: that local time did not exist.
 - `unreconciled (receipt_unknown)`: the message may already be in the channel. The bot will not send another copy.
@@ -54,6 +60,6 @@ Two processes on the same database can deliver the same brief twice. Discord and
 
 ## Verification
 
-Offline tests cover the default and custom queries, pagination, the page and issue caps, rate limits, denied access, timeouts, malformed payloads, empty results versus failures, mention suppression, split messages, weekday and weekend scheduling, Los Angeles and Sydney daylight-saving offsets, gap and overlap instants, same-day recovery, missed-day skip, restart, receipt loss, and partial delivery. PostgreSQL tests use a disposable database whose name ends in `_test`.
+Offline tests cover the default and custom queries, pagination, the page and issue caps, a missing page token, rate limits including `Retry-After`, denied access, timeouts, malformed payloads, empty results versus failures, a hidden assignee name, mention suppression, split messages, the configured guild, weekday and weekend scheduling, Los Angeles and Sydney daylight-saving offsets, gap and overlap instants, same-day recovery, missed-day skip, restart, a poll before `retry_at`, receipt loss, partial delivery, and cancellation during the Jira read. PostgreSQL tests use a disposable database whose name ends in `_test` and cover retry waiting, unreconcile, partial delivery, and claim release on cancel.
 
 The live Jira and Discord check in [development instructions](../DEVELOPMENT.md) has not been run.

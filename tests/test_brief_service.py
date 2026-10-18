@@ -68,6 +68,23 @@ async def test_repeated_page_token_is_a_query_failure():
     assert error.value.transient is False
 
 
+async def test_not_last_without_a_token_is_truncated_and_a_blank_token_is_not_sent():
+    missing = FakeJira(
+        pages=[JiraPage(issues=(issue("JDR-1"),), next_page_token=None, is_last=False)]
+    )
+    document = await BriefService(missing, utc_schedule(), max_pages=3).collect()
+    assert [item.key for item in document.issues] == ["JDR-1"]
+    assert document.truncated is True
+    assert len(missing.requests) == 1
+
+    blank = FakeJira(
+        pages=[JiraPage(issues=(issue("JDR-2"),), next_page_token="  ", is_last=False)]
+    )
+    blank_document = await BriefService(blank, utc_schedule(), max_pages=3).collect()
+    assert blank_document.truncated is True
+    assert [item.next_page_token for item in blank.requests] == [None]
+
+
 async def test_empty_page_is_not_a_failure():
     reader = FakeJira(pages=[JiraPage(issues=(), next_page_token=None, is_last=True)])
     document = await BriefService(reader, utc_schedule()).collect()

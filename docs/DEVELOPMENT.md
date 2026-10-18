@@ -68,7 +68,7 @@ This check has not been run. Offline tests do not replace it. Use a Jira user th
 1. Complete the foundation smoke check. Apply migrations through revision `0003`.
 2. Set `BRIEF_CHANNEL_ID` to a text channel the bot can view and send in. Set `BRIEF_TIME` a few minutes ahead in `BOT_TIMEZONE`, on a weekday. Set `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `JIRA_USER_EMAIL`, and `JIRA_API_TOKEN`. Set `JIRA_STATUS_NAMES` to the team's confirmed statuses, or set `JIRA_JQL` to the confirmed query.
 3. Start the process. The log should include `brief_scheduler_enabled` and must not include the token, the email, or the JQL text.
-4. At the local brief time, confirm one message in the brief channel. It should list issue key, title, assignee or `unassigned`, status, and a browse URL, with no user or role mentions. If the query matches nothing, the message should be `No issues match the configured Jira query.` and must not invent issues.
+4. At the local brief time, confirm one message in the brief channel. It should list issue key, title, assignee or `unassigned`, status, and a browse URL, with no user or role mentions. An assignee that Jira returns without a display name is `assignee name unavailable`, not `unassigned`. If the query matches nothing, the message includes the `Morning brief for …` header, either `Statuses: …` or `Using the configured Jira query.`, and the line `No issues match the configured Jira query.` It must not invent issues.
 5. Restart the process the same day and confirm the brief is not posted a second time. A row whose local date has already passed should not be posted on a later day.
 
 Do not put real issue titles, assignee names, JQL, or tokens in the PR. Say only whether each step passed.
@@ -89,7 +89,7 @@ docker exec jdr-dev-postgres createdb -U jdr jdr_test
 TEST_DATABASE_URL=postgresql+psycopg://jdr:jdr@localhost:5432/jdr_test uv run pytest -v
 ```
 
-Run `createdb` only once. The integration tests upgrade the schema, and the foundation test also downgrades it, temporarily changes the migration version, and verifies rollback and constraints. They delete rows in `reminder_jobs`, `meetings`, and `guild_configurations`. Do not point them at a shared or valuable database; the name guard is only a safeguard. Do not run concurrent integration suites against the same database. CI provisions a fresh PostgreSQL service and sets the test URL so this check executes.
+Run `createdb` only once. The integration tests upgrade the schema, and the foundation test also downgrades it, temporarily changes the migration version, and verifies rollback and constraints. They delete `brief_jobs` first, then `reminder_jobs`, `meetings`, and `guild_configurations`. The foreign key requires `brief_jobs` to go before `guild_configurations`. Do not point them at a shared or valuable database; the name guard is only a safeguard. Do not run concurrent integration suites against the same database. CI provisions a fresh PostgreSQL service and sets the test URL so this check executes.
 
 ## Troubleshooting and limits
 

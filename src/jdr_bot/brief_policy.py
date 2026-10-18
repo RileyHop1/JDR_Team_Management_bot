@@ -16,6 +16,8 @@ WEEKDAYS_ONLY = True
 REQUEST_TIMEOUT_SECONDS = 10.0
 CONNECT_TIMEOUT_SECONDS = 5.0
 MAX_RESPONSE_BYTES = 1_000_000
+# A Jira Retry-After longer than this is capped so one brief cannot wait for hours.
+MAX_RETRY_AFTER_SECONDS = 15 * 60
 MAX_STATUS_NAMES = 10
 MAX_JQL_LENGTH = 500
 SEARCH_FIELDS = ("summary", "status", "assignee")

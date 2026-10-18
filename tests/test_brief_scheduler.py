@@ -1,7 +1,8 @@
 """Brief delivery, recovery, and failure handling with a fake clock."""
 
+import asyncio
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -292,3 +293,145 @@ async def test_los_angeles_brief_waits_for_the_utc_instant():
     assert len(delivery.sent) == 1
     due = next(job.due_at for job in store.jobs.values() if job.state is JobState.DELIVERED)
     assert due == datetime(2026, 3, 9, 16, tzinfo=UTC_TZ)
+
+
+async def test_poll_before_retry_at_does_not_send():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    reader = FakeJira(
+        pages=[page()],
+        errors=[BriefQueryError("rate_limited", transient=True)],
+    )
+    running = scheduler(store, clock, reader, delivery)
+    await running.run_once()
+    assert delivery.sent == []
+    assert store.only().retry_at == datetime(2026, 6, 1, 9, 0, 15, tzinfo=UTC_TZ)
+    clock.advance(seconds=5)
+    await running.run_once()
+    assert delivery.sent == []
+    assert store.only().attempt_count == 1
+    clock.advance(seconds=10)
+    await running.run_once()
+    assert len(delivery.sent) == 1
+    assert store.only().state is JobState.DELIVERED
+
+
+async def test_retry_after_extends_the_wait():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    reader = FakeJira(
+        pages=[page()],
+        errors=[BriefQueryError("rate_limited", transient=True, retry_after=timedelta(seconds=90))],
+    )
+    running = scheduler(store, clock, reader, delivery)
+    await running.run_once()
+    clock.advance(seconds=15)
+    await running.run_once()
+    assert delivery.sent == []
+    assert store.only().attempt_count == 1
+    assert store.only().failure_category == "rate_limited"
+    clock.advance(seconds=75)
+    await running.run_once()
+    assert len(delivery.sent) == 1
+
+
+async def test_transient_failure_notice_retries_and_keeps_the_jira_category():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    delivery.failures = [DeliveryError("discord_http", transient=True)]
+    reader = FakeJira(
+        errors=[
+            BriefQueryError("access_denied", transient=False),
+            BriefQueryError("access_denied", transient=False),
+        ]
+    )
+    running = scheduler(store, clock, reader, delivery)
+    await running.run_once()
+    assert delivery.sent == []
+    assert store.only().state is JobState.SCHEDULED
+    assert store.only().failure_category == "access_denied"
+    clock.advance(seconds=5)
+    await running.run_once()
+    assert delivery.sent == []
+    clock.advance(seconds=10)
+    await running.run_once()
+    assert "could not be loaded (access_denied)" in delivery.sent[0][0]
+    assert "discord_http" not in delivery.sent[0][0]
+    assert store.only().state is JobState.FAILED
+    assert store.only().failure_category == "access_denied"
+
+
+async def test_permanent_failure_notice_keeps_the_jira_category():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    delivery.failures = [DeliveryError("channel_forbidden", transient=False)]
+    await scheduler(
+        store,
+        clock,
+        FakeJira(errors=[BriefQueryError("access_denied", transient=False)]),
+        delivery,
+    ).run_once()
+    assert delivery.sent == []
+    assert store.only().state is JobState.FAILED
+    assert store.only().failure_category == "access_denied"
+
+
+async def test_cancel_during_jira_read_releases_the_claim_and_the_day_can_send():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+
+    class Hang(FakeJira):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = asyncio.Event()
+
+        async def search(self, request):
+            self.requests.append(request)
+            self.started.set()
+            await asyncio.Event().wait()
+            return page()
+
+    reader = Hang()
+    task = asyncio.create_task(scheduler(store, clock, reader, delivery).run_once())
+    await reader.started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert store.only().state is JobState.SCHEDULED
+    assert store.only().claim_token is None
+    assert store.only().attempt_count == 0
+    await scheduler(store, clock, FakeJira(pages=[page()]), delivery).run_once()
+    assert len(delivery.sent) == 1
+    assert store.only().state is JobState.DELIVERED
+
+
+async def test_cancel_during_send_keeps_the_claim():
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+
+    class HangSend(FakeBriefDelivery):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = asyncio.Event()
+
+        async def send_brief(self, message):
+            del message
+            self.started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("send should stay cancelled")
+
+    delivery = HangSend()
+    task = asyncio.create_task(
+        scheduler(store, clock, FakeJira(pages=[page()]), delivery).run_once()
+    )
+    await delivery.started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert store.only().state is JobState.CLAIMED
+    assert delivery.sent == []
