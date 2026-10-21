@@ -11,7 +11,7 @@ from sqlalchemy.exc import ArgumentError
 from jdr_bot.brief import BriefSchedule, compile_schedule, validated_email
 from jdr_bot.guild_config import EnvGuildDefaults, StoredGuildConfig
 from jdr_bot.policy import MAX_TIMEZONE_LENGTH
-from jdr_bot.startup import InvalidJiraConfiguration, brief_field_for_message
+from jdr_bot.startup import InvalidJiraConfiguration, failure_for_brief_setting
 
 
 class Settings(BaseSettings):
@@ -148,7 +148,7 @@ class Settings(BaseSettings):
                 custom_jql=self.jira_jql,
             )
         except ValueError as error:
-            raise InvalidJiraConfiguration((brief_field_for_message(str(error)),)) from error
+            raise failure_for_brief_setting(error) from error
         return self
 
     def guild_defaults(self) -> EnvGuildDefaults:

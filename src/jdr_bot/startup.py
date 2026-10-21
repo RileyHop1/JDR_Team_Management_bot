@@ -25,17 +25,11 @@ JIRA_SETTING_FIELDS = frozenset(
     }
 )
 
-_BRIEF_FIELD_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("JIRA_BASE_URL", "jira_base_url"),
-    ("JIRA_PROJECT_KEY", "jira_project_key"),
-    ("JIRA_USER_EMAIL", "jira_user_email"),
-    ("JIRA_JQL", "jira_jql"),
-    ("JIRA_STATUS_NAMES", "jira_status_names"),
-    ("BRIEF_TIME", "brief_time"),
-    ("brief_channel_id", "brief_channel_id"),
-    ("set JIRA_STATUS_NAMES", "jira_status_names"),
-    ("use an IANA time zone", "bot_timezone"),
-)
+# Logged when a brief error does not carry one of the known setting names.
+UNKNOWN_BRIEF_FIELD = "jira_configuration"
+# A zone failure is core configuration, not an invalid Jira brief setting.
+ZONE_FIELD = "bot_timezone"
+_BRIEF_ERROR_FIELDS = JIRA_SETTING_FIELDS | {ZONE_FIELD}
 
 
 class StartupFailure(RuntimeError):
@@ -75,6 +69,15 @@ class DatabaseUnreachable(StartupFailure):
 
     category: ClassVar[str] = "database_unreachable"
     hint: ClassVar[str] = "confirm PostgreSQL is running and the configured role can connect"
+
+
+class DatabasePermissionDenied(StartupFailure):
+    """The role can connect but cannot read the schema. The driver message is omitted."""
+
+    category: ClassVar[str] = "database_permission_denied"
+    hint: ClassVar[str] = (
+        "the database role can connect but cannot read the schema; grant it access to the tables"
+    )
 
 
 class SchemaOutdated(StartupFailure):
@@ -119,17 +122,32 @@ def configuration_failure(error: ValidationError) -> StartupFailure:
     return InvalidConfiguration(fields)
 
 
-def brief_field_for_message(message: str) -> str:
-    """Map one of our fixed validator messages to a setting name.
+class BriefSettingError(ValueError):
+    """A brief setting was rejected. ``field`` is a fixed name, not the value.
 
-    The message itself is not returned. An unrecognized message becomes
-    ``jira_configuration`` so a future message that includes a value cannot
-    be copied into the log.
+    An unknown name is stored as ``jira_configuration`` so a value cannot
+    become the logged field. The message is for developers and is not logged.
     """
-    for prefix, field in _BRIEF_FIELD_PREFIXES:
-        if message.startswith(prefix):
-            return field
-    return "jira_configuration"
+
+    def __init__(self, field: str, message: str) -> None:
+        self.field = field if field in _BRIEF_ERROR_FIELDS else UNKNOWN_BRIEF_FIELD
+        super().__init__(message)
+
+
+def failure_for_brief_setting(error: Exception) -> StartupFailure:
+    """Map a brief validation error using the field carried on the error.
+
+    ``bot_timezone`` is ``invalid_configuration``. A known brief field is
+    ``invalid_jira_configuration``. Any other error, including a ``ValueError``
+    that does not carry a field, uses ``fields=jira_configuration`` and does
+    not copy the exception message.
+    """
+    if isinstance(error, BriefSettingError):
+        if error.field == ZONE_FIELD:
+            return InvalidConfiguration((ZONE_FIELD,))
+        if error.field in JIRA_SETTING_FIELDS:
+            return InvalidJiraConfiguration((error.field,))
+    return InvalidJiraConfiguration((UNKNOWN_BRIEF_FIELD,))
 
 
 def require_database_url(environment: Mapping[str, str] | None = None) -> str:

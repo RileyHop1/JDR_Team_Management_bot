@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import uuid4
 
+import psycopg.errors as pg_errors
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -41,9 +42,17 @@ from jdr_bot.domain import (
     as_utc,
 )
 from jdr_bot.ports import MeetingConflict, MeetingNotEditable, MeetingNotFound, ReminderInProgress
-from jdr_bot.startup import DatabaseUnreachable, SchemaOutdated
+from jdr_bot.startup import (
+    DatabasePermissionDenied,
+    DatabaseUnreachable,
+    SchemaOutdated,
+    StartupFailure,
+)
 
 SCHEMA_REVISION = "0004"
+# Missing relation or column. Other programming errors are not a migration hint.
+_SCHEMA_SQLSTATES = frozenset({"42P01", "42703"})
+_PERMISSION_SQLSTATE = "42501"
 
 _ACTIVE_JOBS = "state IN ('scheduled', 'claimed')"
 _OPEN_OCCURRENCES = (
@@ -177,19 +186,37 @@ def create_engine(database_url: str) -> AsyncEngine:
     )
 
 
+def _sqlstate(original: BaseException | None) -> str | None:
+    """Return a driver SQLSTATE. The exception message is not read."""
+    if isinstance(original, pg_errors.Error):
+        return original.sqlstate
+    return None
+
+
+def _programming_failure(error: ProgrammingError) -> StartupFailure:
+    """Classify a schema read by SQLSTATE, not by the driver text."""
+    state = _sqlstate(error.orig)
+    if state in _SCHEMA_SQLSTATES:
+        return SchemaOutdated()
+    if state == _PERMISSION_SQLSTATE:
+        return DatabasePermissionDenied()
+    return DatabaseUnreachable()
+
+
 async def check_database(engine: AsyncEngine) -> None:
     """Verify connectivity and the expected migration revision.
 
-    A programming error means the schema objects are absent. Other database
-    errors mean the server could not be used. The driver message is kept as
-    the cause and is not part of the raised text: it can contain the URL.
-    The observed revision is also omitted because that column is data.
+    SQLSTATE 42P01 and 42703 mean the schema objects are absent. 42501 means
+    the role can connect but cannot read them. Other database errors mean the
+    server could not be used. The driver message stays on the cause and is not
+    part of the raised text. The observed revision is omitted because that
+    column is data.
     """
     try:
         async with engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
     except ProgrammingError as error:
-        raise SchemaOutdated() from error
+        raise _programming_failure(error) from error
     except (SQLAlchemyError, TimeoutError, OSError) as error:
         raise DatabaseUnreachable() from error
     if revision != SCHEMA_REVISION:

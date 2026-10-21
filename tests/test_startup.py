@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -9,15 +10,23 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import psycopg.errors as pg_errors
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from jdr_bot.__main__ import main, run
 from jdr_bot.bot import TeamBot
+from jdr_bot.brief import compile_schedule
 from jdr_bot.config import Settings
 from jdr_bot.startup import (
     MIGRATION_COMMAND,
+    BriefSettingError,
+    DatabasePermissionDenied,
     DatabaseUnreachable,
     DiscordLoginFailed,
     GuildSyncForbidden,
@@ -25,8 +34,8 @@ from jdr_bot.startup import (
     InvalidJiraConfiguration,
     SchemaOutdated,
     StartupFailure,
-    brief_field_for_message,
     configuration_failure,
+    failure_for_brief_setting,
     require_database_url,
 )
 from jdr_bot.storage import SCHEMA_REVISION, check_database, create_engine
@@ -146,11 +155,51 @@ def test_configuration_failure_uses_field_names_only():
     assert_no_secrets(str(unnamed_failure))
 
 
-def test_brief_field_mapping_does_not_return_the_message():
-    assert brief_field_for_message("JIRA_BASE_URL synthetic-jira-token") == "jira_base_url"
-    assert brief_field_for_message("JIRA_JQL synthetic-jira-token") == "jira_jql"
-    assert brief_field_for_message(f"rejected {SECRET_TEXT}") == "jira_configuration"
-    assert_no_secrets(str(InvalidJiraConfiguration(("jira_configuration",))))
+def test_brief_setting_error_carries_a_fixed_field():
+    base_url = BriefSettingError("jira_base_url", f"JIRA_BASE_URL {SECRET_TEXT}")
+    base_failure = failure_for_brief_setting(base_url)
+    assert isinstance(base_failure, InvalidJiraConfiguration)
+    assert base_failure.fields == ("jira_base_url",)
+    assert_no_secrets(str(base_failure))
+
+    jql_failure = failure_for_brief_setting(BriefSettingError("jira_jql", SECRET_TEXT))
+    assert jql_failure.fields == ("jira_jql",)
+
+    unknown = BriefSettingError(f"rejected-{SECRET_TEXT}", SECRET_TEXT)
+    assert unknown.field == "jira_configuration"
+    fallback = failure_for_brief_setting(unknown)
+    assert isinstance(fallback, InvalidJiraConfiguration)
+    assert fallback.fields == ("jira_configuration",)
+    assert_no_secrets(str(fallback))
+    assert_no_secrets(unknown.field)
+
+    plain = failure_for_brief_setting(ValueError(SECRET_TEXT))
+    assert plain.fields == ("jira_configuration",)
+    assert SECRET_TEXT not in str(plain)
+
+    zone = failure_for_brief_setting(
+        BriefSettingError("bot_timezone", "use an IANA time zone such as America/Los_Angeles")
+    )
+    assert isinstance(zone, InvalidConfiguration)
+    assert zone.category == "invalid_configuration"
+    assert zone.fields == ("bot_timezone",)
+    schedule_error = None
+    try:
+        compile_schedule(
+            guild_id=1,
+            channel_id=10,
+            timezone_name="x" * 65,
+            brief_time="09:00",
+            base_url="https://example.atlassian.net",
+            project_key="JDR",
+            status_names="In Progress",
+            custom_jql=None,
+        )
+    except BriefSettingError as error:
+        schedule_error = error
+    assert schedule_error is not None
+    assert schedule_error.field == "bot_timezone"
+    assert isinstance(failure_for_brief_setting(schedule_error), InvalidConfiguration)
 
 
 def test_require_database_url_names_the_env_file_command():
@@ -201,6 +250,7 @@ def os_environ_without_database_url() -> dict[str, str]:
         ),
         (SchemaOutdated(), "schema_outdated", 1),
         (DatabaseUnreachable(), "database_unreachable", 1),
+        (DatabasePermissionDenied(), "database_permission_denied", 1),
         (DiscordLoginFailed(), "discord_login_failed", 1),
         (GuildSyncForbidden(), "guild_sync_forbidden", 1),
     ],
@@ -232,6 +282,9 @@ def test_main_logs_category_and_hides_cause(
     assert "startup_failed" not in caplog.text
     if isinstance(failure, SchemaOutdated):
         assert MIGRATION_COMMAND in caplog.text
+    if isinstance(failure, DatabasePermissionDenied):
+        assert MIGRATION_COMMAND not in caplog.text
+        assert "grant it access" in caplog.text
     assert_no_secrets(caplog.text)
     assert all(record.exc_info is None for record in caplog.records)
 
@@ -327,17 +380,62 @@ async def test_outdated_revision_omits_the_stored_value():
     await check_database(RevisionEngine(SCHEMA_REVISION))
 
 
+def programming_error(original: BaseException) -> ProgrammingError:
+    return ProgrammingError("SELECT version_num FROM alembic_version", {}, original)
+
+
 async def test_database_errors_drop_driver_text(caplog: pytest.LogCaptureFixture):
     caplog.set_level("DEBUG")
-    with pytest.raises(SchemaOutdated) as missing:
+    with pytest.raises(DatabaseUnreachable) as generic:
         await check_database(ExplodingEngine(driver_error(ProgrammingError)))
-    assert_no_secrets(str(missing.value))
-    assert MIGRATION_COMMAND in str(missing.value)
+    assert generic.value.category == "database_unreachable"
+    assert MIGRATION_COMMAND not in str(generic.value)
+    assert_no_secrets(str(generic.value))
     with pytest.raises(DatabaseUnreachable) as unreachable:
         await check_database(ExplodingEngine(driver_error(OperationalError)))
     assert unreachable.value.category == "database_unreachable"
     assert_no_secrets(str(unreachable.value))
     assert_no_secrets(caplog.text)
+
+
+@pytest.mark.parametrize(
+    ("original", "expected", "sqlstate"),
+    [
+        (pg_errors.UndefinedTable(SECRET_TEXT), SchemaOutdated, "42P01"),
+        (pg_errors.UndefinedColumn(SECRET_TEXT), SchemaOutdated, "42703"),
+        (pg_errors.InsufficientPrivilege(SECRET_TEXT), DatabasePermissionDenied, "42501"),
+        (pg_errors.SyntaxError(SECRET_TEXT), DatabaseUnreachable, "42601"),
+    ],
+)
+async def test_programming_error_uses_sqlstate(
+    original: pg_errors.Error,
+    expected: type[StartupFailure],
+    sqlstate: str,
+) -> None:
+    assert original.sqlstate == sqlstate
+    with pytest.raises(expected) as caught:
+        await check_database(ExplodingEngine(programming_error(original)))
+    assert_no_secrets(str(caught.value))
+    if expected is SchemaOutdated:
+        assert MIGRATION_COMMAND in str(caught.value)
+    else:
+        assert MIGRATION_COMMAND not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError(SECRET_TEXT),
+        OSError(SECRET_TEXT),
+        SATimeoutError(SECRET_TEXT),
+    ],
+)
+async def test_timeout_and_oserror_are_database_unreachable(error: Exception) -> None:
+    with pytest.raises(DatabaseUnreachable) as caught:
+        await check_database(ExplodingEngine(error))
+    assert caught.value.category == "database_unreachable"
+    assert MIGRATION_COMMAND not in str(caught.value)
+    assert_no_secrets(str(caught.value))
 
 
 async def test_refused_connection_is_database_unreachable():
@@ -400,3 +498,202 @@ async def test_forbidden_sync_stops_the_scheduler_without_the_body(settings: Set
     assert_no_secrets(str(caught.value))
     assert isinstance(caught.value.__cause__, discord.Forbidden)
     assert bot._scheduler_task is None
+
+
+async def test_non_sync_forbidden_is_not_rewritten(settings: Settings, monkeypatch):
+    response = SimpleNamespace(status=403, reason=f"Forbidden {SECRET_TEXT}")
+    engine = SimpleEngine()
+    bot = MagicMock()
+    bot.__aenter__ = AsyncMock(return_value=bot)
+    bot.__aexit__ = AsyncMock(return_value=False)
+    bot.start = AsyncMock(side_effect=discord.Forbidden(response, SECRET_TEXT))
+    bot.close = AsyncMock()
+    monkeypatch.setattr("jdr_bot.__main__.create_engine", lambda _url: engine)
+    monkeypatch.setattr("jdr_bot.__main__.TeamBot", lambda *_args: bot)
+    with pytest.raises(discord.Forbidden) as caught:
+        await run(settings)
+    assert isinstance(caught.value, discord.Forbidden)
+    engine.dispose.assert_awaited_once()
+
+
+def test_main_non_sync_forbidden_is_startup_failed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, settings: Settings
+) -> None:
+    response = SimpleNamespace(status=403, reason=f"Forbidden {SECRET_TEXT}")
+
+    def load_settings() -> Settings:
+        return settings
+
+    async def fail_run(_settings: Settings) -> None:
+        raise discord.Forbidden(response, SECRET_TEXT)
+
+    monkeypatch.setattr("jdr_bot.__main__.Settings", load_settings)
+    monkeypatch.setattr("jdr_bot.__main__.run", fail_run)
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 1
+    assert "startup_failed error_type=Forbidden" in caplog.text
+    assert "guild_sync_forbidden" not in caplog.text
+    assert_no_secrets(caplog.text)
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+async def test_sync_http_error_stops_the_scheduler(settings: Settings, monkeypatch):
+    monkeypatch.setattr("jdr_bot.bot.check_database", AsyncMock())
+    scheduler = IdleScheduler()
+    bot = TeamBot(settings, MagicMock(), scheduler=scheduler)
+    response = SimpleNamespace(status=500, reason=SECRET_TEXT)
+    monkeypatch.setattr(
+        bot.tree,
+        "sync",
+        AsyncMock(side_effect=discord.HTTPException(response, SECRET_TEXT)),
+    )
+    with pytest.raises(discord.HTTPException):
+        await bot.setup_hook()
+    assert bot._scheduler_task is None
+
+
+def require_test_database() -> tuple[str, str]:
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("set TEST_DATABASE_URL to a disposable PostgreSQL database ending in _test")
+    database = make_url(url).database or ""
+    assert database.endswith("_test"), "refusing a non-test database"
+    assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", database), (
+        "refusing a database name that is not a simple identifier"
+    )
+    return url, database
+
+
+async def alembic_upgrade(url: str) -> None:
+    environment = {**os.environ, "DATABASE_URL": url}
+    process = await asyncio.create_subprocess_exec("alembic", "upgrade", "head", env=environment)
+    assert await process.wait() == 0
+
+
+async def autocommit(
+    engine: AsyncEngine, statement: str, parameters: dict[str, str] | None = None
+) -> None:
+    async with engine.connect() as connection:
+        autocommit_connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
+        await autocommit_connection.execute(text(statement), parameters or {})
+
+
+def assert_driver_sqlstate(
+    failure: StartupFailure, sqlstate: str, driver_type: type[pg_errors.Error]
+) -> None:
+    cause = failure.__cause__
+    assert isinstance(cause, ProgrammingError)
+    assert isinstance(cause.orig, driver_type)
+    assert cause.orig.sqlstate == sqlstate
+    assert_no_secrets(str(failure))
+
+
+_DENIED_ROLE = "jdr_schema_denied"
+_DENIED_PASSWORD = "synthetic-db-password"
+
+
+@pytest.mark.integration
+async def test_postgres_schema_sqlstates():
+    url, database = require_test_database()
+    await alembic_upgrade(url)
+    engine = create_engine(url)
+    denied_engine = None
+    hidden_table = False
+    hidden_column = False
+    created_role = False
+    revoked_public = False
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("ALTER TABLE alembic_version RENAME TO alembic_version_hidden")
+            )
+        hidden_table = True
+        with pytest.raises(SchemaOutdated) as missing_table:
+            await check_database(engine)
+        assert missing_table.value.category == "schema_outdated"
+        assert MIGRATION_COMMAND in str(missing_table.value)
+        assert_driver_sqlstate(missing_table.value, "42P01", pg_errors.UndefinedTable)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("ALTER TABLE alembic_version_hidden RENAME TO alembic_version")
+            )
+        hidden_table = False
+
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("ALTER TABLE alembic_version RENAME COLUMN version_num TO version_num_hidden")
+            )
+        hidden_column = True
+        with pytest.raises(SchemaOutdated) as missing_column:
+            await check_database(engine)
+        assert MIGRATION_COMMAND in str(missing_column.value)
+        assert_driver_sqlstate(missing_column.value, "42703", pg_errors.UndefinedColumn)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("ALTER TABLE alembic_version RENAME COLUMN version_num_hidden TO version_num")
+            )
+        hidden_column = False
+
+        await autocommit(
+            engine,
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = :role",
+            {"role": _DENIED_ROLE},
+        )
+        await autocommit(engine, f"DROP ROLE IF EXISTS {_DENIED_ROLE}")
+        await autocommit(
+            engine,
+            f"CREATE ROLE {_DENIED_ROLE} LOGIN PASSWORD '{_DENIED_PASSWORD}'",
+        )
+        created_role = True
+        await autocommit(engine, f"GRANT CONNECT ON DATABASE {database} TO {_DENIED_ROLE}")
+        await autocommit(engine, f"GRANT USAGE ON SCHEMA public TO {_DENIED_ROLE}")
+        async with engine.connect() as connection:
+            allowed = await connection.scalar(
+                text("SELECT has_table_privilege(:role, 'alembic_version', 'SELECT')"),
+                {"role": _DENIED_ROLE},
+            )
+        if allowed:
+            await autocommit(engine, "REVOKE ALL ON TABLE alembic_version FROM PUBLIC")
+            revoked_public = True
+        denied_url = make_url(url).set(username=_DENIED_ROLE, password=_DENIED_PASSWORD)
+        denied_engine = create_engine(denied_url.render_as_string(hide_password=False))
+        with pytest.raises(DatabasePermissionDenied) as denied:
+            await check_database(denied_engine)
+        assert denied.value.category == "database_permission_denied"
+        assert MIGRATION_COMMAND not in str(denied.value)
+        assert "grant it access" in str(denied.value)
+        assert_no_secrets(str(denied.value))
+        assert_driver_sqlstate(denied.value, "42501", pg_errors.InsufficientPrivilege)
+    finally:
+        if denied_engine is not None:
+            await denied_engine.dispose()
+        if hidden_column:
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text(
+                        "ALTER TABLE alembic_version "
+                        "RENAME COLUMN version_num_hidden TO version_num"
+                    )
+                )
+        if hidden_table:
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text("ALTER TABLE alembic_version_hidden RENAME TO alembic_version")
+                )
+        if revoked_public:
+            await autocommit(
+                engine,
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE alembic_version TO PUBLIC",
+            )
+        if created_role:
+            await autocommit(
+                engine,
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = :role",
+                {"role": _DENIED_ROLE},
+            )
+            await autocommit(engine, f"REVOKE ALL ON DATABASE {database} FROM {_DENIED_ROLE}")
+            await autocommit(engine, f"REVOKE ALL ON SCHEMA public FROM {_DENIED_ROLE}")
+            await autocommit(engine, f"REVOKE ALL ON TABLE alembic_version FROM {_DENIED_ROLE}")
+            await autocommit(engine, f"DROP ROLE IF EXISTS {_DENIED_ROLE}")
+        await engine.dispose()

@@ -65,7 +65,7 @@ Acceptance criteria:
 
 ## JDR-005: Actionable startup failure categories
 
-Offline behavior is implemented. Startup logs a fixed category for invalid configuration, invalid Jira brief settings, an unreachable database, an outdated schema, Discord login failure, and forbidden guild command sync. Unexpected failures keep a generic category and the exception class name. Logs omit secrets and driver text. See [decision 0005](decisions/0005-startup-failures.md) and the troubleshooting section of [development instructions](DEVELOPMENT.md).
+Offline behavior is implemented. Startup logs a fixed category for invalid configuration, invalid Jira brief settings, an unreachable database, a role that cannot read the schema, an outdated schema, Discord login failure, and forbidden guild command sync. Unexpected failures keep a generic category and the exception class name. Logs omit secrets and driver text. See [decision 0005](decisions/0005-startup-failures.md) and the troubleshooting section of [development instructions](DEVELOPMENT.md).
 
 GitHub issue: [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10).
 
