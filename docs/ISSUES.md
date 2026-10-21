@@ -1,19 +1,26 @@
 # Implementation issues
 
-These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8), [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10), and [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
+Work is tracked in GitHub issues. Each `JDR-00N` ID below is a planning identifier for one of those issues. It is not a Jira ticket. Jira is the external tracker the morning brief reads, not the board for this repository. Branch names use the planning ID; see [contributing](../CONTRIBUTING.md).
 
-| ID | Work item | Branch | Dependencies |
-| --- | --- | --- | --- |
-| JDR-001 | Development foundation and Discord commands | `feat/development-foundation` | None |
-| JDR-002 | Meeting configuration and reminders | `feat/meeting-reminders` | JDR-001 |
-| JDR-003 | Jira morning brief | `feat/jira-morning-brief` | JDR-001; scheduler from JDR-002 |
-| JDR-004 | Meeting capture and transcripts | `feat/meeting-transcripts` | JDR-001; meeting model from JDR-002; voice feasibility |
-| JDR-005 | Actionable startup failure categories | `cursor/startup-failure-categories-37c6` | JDR-001; brief settings from JDR-003; guild schema from JDR-006 |
-| JDR-006 | Persisted guild configuration | `cursor/guild-configuration-5ec9` | JDR-001; consumed by JDR-002 and JDR-003 |
+A row is "merged" only when the pull request is on `main` and hosted CI passed. A live Discord or Jira smoke check, and team confirmation of a provisional decision, stay outstanding until they happen. A planning note does not deliver a feature.
+
+| ID | Work item | GitHub issue | Delivery | Dependencies |
+| --- | --- | --- | --- | --- |
+| JDR-001 | Development foundation and Discord commands | [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5) (open) | [PR #9](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/9) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/38816010204) | None |
+| JDR-002 | Meeting configuration and reminders | [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) (open) | [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688) | JDR-001 |
+| JDR-003 | Jira morning brief | [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) (open) | [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833) | JDR-001; scheduler from JDR-002 |
+| JDR-004 | Meeting capture and transcripts | [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) (open) | Not started | JDR-001; meeting model from JDR-002; voice feasibility |
+| JDR-005 | Actionable startup failure categories | [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) (closed) | [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270) | JDR-001; brief settings from JDR-003; guild schema from JDR-006 |
+| JDR-006 | Persisted guild configuration | [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) (closed) | [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559) | JDR-001; consumed by JDR-002 and JDR-003 |
+| JDR-007 | Hosting decision and production deployment runbook | [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12) (open) | Not started | JDR-001; informs JDR-004 |
+| JDR-008 | Documentation status sync | [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) | This status record; the pull request that adds it closes #13 | None |
+| JDR-009 | GitHub issue and pull request templates | [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14) (open) | Not started | None |
+
+Still outstanding after the merged pull requests above: the live Discord smoke check for JDR-001, the live reminder check and team confirmation of [decision 0002](decisions/0002-meeting-reminders.md), the live Jira brief check and team confirmation of [decision 0003](decisions/0003-jira-morning-brief.md), the live `/config` check and team confirmation of [decision 0004](decisions/0004-guild-configuration.md), meeting transcripts (JDR-004), the hosting runbook (JDR-007), and GitHub templates (JDR-009). [Decision 0001](decisions/0001-development-foundation.md) and [decision 0005](decisions/0005-startup-failures.md) are accepted for the merged implementation. Decision 0005 does not ask for a further team confirmation.
 
 ## JDR-001: Development foundation
 
-Implementation and local automated validation are in progress; the live Discord smoke check remains pending. See [development instructions](DEVELOPMENT.md).
+Merged in [PR #9](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/9) on 2026-10-15. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/38816010204)). That pull request includes the pinned toolchain, CI, secret-safe configuration, guild-scoped commands, graceful shutdown, PostgreSQL migrations, test isolation, and offline permission denial. The live Discord smoke check in [development instructions](DEVELOPMENT.md) has not been run, so GitHub issue [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5) stays open. See [development foundation](features/development-foundation.md).
 
 Provide a reproducible, testable application baseline so contributors can safely build features.
 
@@ -25,9 +32,11 @@ Acceptance criteria:
 - Add an asynchronous Discord entry point, guild-scoped command registration, authorization, and graceful shutdown.
 - Add PostgreSQL migrations and test isolation. Verify one command in a private test server; exercise permission denial offline.
 
+The private test-server command check in the last criterion is the part still open. The migration, test-isolation, and offline permission-denial parts are in the merged pull request.
+
 ## JDR-002: Meeting configuration and reminders
 
-Offline behavior is implemented under the provisional policy in [decision 0002](decisions/0002-meeting-reminders.md): operator-only commands, validated schedules, durable jobs, restart recovery, and fake-clock tests. Team confirmation of that policy and a reminder demonstrated in the test server are still outstanding, so this item is not complete. See [meeting reminders](features/meeting-reminders.md).
+Merged in [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). Offline behavior follows the provisional policy in [decision 0002](decisions/0002-meeting-reminders.md): operator-only commands, validated schedules, durable jobs, restart recovery, and fake-clock tests. Team confirmation of that policy and a reminder demonstrated in the test server are still outstanding, so GitHub issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open. See [meeting reminders](features/meeting-reminders.md).
 
 Let authorized members create, view, update, and cancel meetings with configurable reminder offsets.
 
@@ -38,9 +47,11 @@ Acceptance criteria:
 - Test create/update/cancel, daylight saving transitions, restart recovery, duplicate windows, and delivery failures using fake clocks.
 - Demonstrate a reminder in the test server and document operation and troubleshooting.
 
+Operation and troubleshooting are documented. The test-server demonstration has not been run.
+
 ## JDR-003: Jira morning brief
 
-Offline behavior is implemented under the provisional policy in [decision 0003](decisions/0003-jira-morning-brief.md): a read-only Jira Cloud search, a separate brief job type on the existing scheduler, weekday delivery, same-day recovery, and fake-adapter tests. Team confirmation of that policy and a brief demonstrated against test Jira and Discord are still outstanding, so this item is not complete. See [Jira morning brief](features/jira-morning-brief.md).
+Merged in [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833)). Offline behavior follows the provisional policy in [decision 0003](decisions/0003-jira-morning-brief.md): a read-only Jira Cloud search, a separate brief job type on the existing scheduler, weekday delivery, same-day recovery, and fake-adapter tests. Team confirmation of that policy and a brief demonstrated against test Jira and Discord are still outstanding, so GitHub issue [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) stays open. See [Jira morning brief](features/jira-morning-brief.md).
 
 Acceptance criteria:
 
@@ -50,7 +61,11 @@ Acceptance criteria:
 - Distinguish no matching issues from query failure; test rate limits, denied access, timeouts, pagination, and scheduling recovery.
 - Demonstrate a read-only query and brief in test resources. Never fabricate progress or blockers.
 
+The team confirmation in the first criterion and the test-resource demonstration in the last criterion have not been done. The offline query, schedule, and failure tests are in the merged pull request. The provisional choices are Jira Cloud, an explicit status list or `JIRA_JQL`, and no assignee filter.
+
 ## JDR-004: Meeting capture and transcripts
+
+Not started. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) is open. No pull request has implemented this feature. See [meeting transcripts](features/meeting-transcripts.md).
 
 Capture explicitly authorized meetings and deliver transcripts to the approved meetings channel.
 
@@ -65,15 +80,13 @@ Acceptance criteria:
 
 ## JDR-005: Actionable startup failure categories
 
-Offline behavior is implemented. Startup logs a fixed category for invalid configuration, invalid Jira brief settings, an unreachable database, a role that cannot read the schema, an outdated schema, Discord login failure, and forbidden guild command sync. Unexpected failures keep a generic category and the exception class name. Logs omit secrets and driver text. See [decision 0005](decisions/0005-startup-failures.md) and the troubleshooting section of [development instructions](DEVELOPMENT.md).
+Merged in [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270)). GitHub issue [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) is closed. [Decision 0005](decisions/0005-startup-failures.md) is accepted for this implementation and does not leave a team-confirmation step open. No live Discord smoke check was required, and none was run.
 
-GitHub issue: [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10).
+Startup logs a fixed category for invalid configuration, invalid Jira brief settings, an unreachable database, a role that cannot read the schema, an outdated schema, Discord login failure, and forbidden guild command sync. Unexpected failures keep a generic category and the exception class name. Logs omit secrets and driver text. See the troubleshooting section of [development instructions](DEVELOPMENT.md).
 
 ## JDR-006: Persisted guild configuration
 
-Offline behavior is implemented under the provisional policy in [decision 0004](decisions/0004-guild-configuration.md): nullable guild settings, operator `/config` commands, environment fallback when a field is unset, and future brief jobs that pick up a new channel and time. Team confirmation of that policy and a `/config` check in the test server are still outstanding, so this item is not complete. See [guild configuration](features/guild-configuration.md).
-
-GitHub issue: [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11).
+Merged in [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559)). GitHub issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) is closed. Offline behavior follows the provisional policy in [decision 0004](decisions/0004-guild-configuration.md): nullable guild settings, operator `/config` commands, environment fallback when a field is unset, and future brief jobs that pick up a new channel and time. Team confirmation of that policy and a `/config` check in the test server are still outstanding. Closing the issue did not run that check. See [guild configuration](features/guild-configuration.md).
 
 Acceptance criteria:
 
@@ -84,6 +97,20 @@ Acceptance criteria:
 - Test permission denial, invalid channels and zones, persistence round-trips against PostgreSQL, and upgrade/downgrade of migration `0004`.
 - Update `docs/DEVELOPMENT.md` and `.env.example` with placeholders only.
 
+The merged pull request covers these criteria. Team confirmation of decision 0004 is a separate outstanding step. The live `/config` check in [development instructions](DEVELOPMENT.md) has not been run.
+
+## JDR-007: Hosting decision and production deployment runbook
+
+Not started. GitHub issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12) is open. No hosting decision record or production runbook is in the repository. Where the bot runs continuously, and whether that environment supports Discord voice networking, is still an open prerequisite.
+
+## JDR-008: Documentation status
+
+GitHub issue [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) asks these status lines to match merged work. This page is that record. The pull request that introduces this wording closes the issue. No product behavior is in scope.
+
+## JDR-009: GitHub issue and pull request templates
+
+Not started. GitHub issue [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14) is open. The repository has no `.github/ISSUE_TEMPLATE/` and no pull request template.
+
 ## Shared completion rules
 
-Follow [code standards](../CODE_STANDARDS.md), [contributing](../CONTRIBUTING.md), and [security requirements](../SECURITY.md). Each feature needs reviewed code, meaningful tests, updated docs, and controlled integration evidence. Draft planning PRs remain incomplete until their acceptance criteria are implemented and verified.
+Follow [code standards](../CODE_STANDARDS.md), [contributing](../CONTRIBUTING.md), and [security requirements](../SECURITY.md). Each feature needs reviewed code, meaningful tests, updated docs, and controlled integration evidence. A planning document does not complete a feature. Passing hosted CI on a merged pull request covers the automated checks. A live smoke check or team confirmation named above stays outstanding until it is done. Closing a GitHub issue does not by itself mean those remaining checks passed.

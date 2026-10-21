@@ -1,6 +1,6 @@
 # Meeting capture and transcripts
 
-Status: planning only; implementation and validation are outstanding.
+Status: not started. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) is open. No pull request has merged this feature. Implementation and validation are outstanding.
 
 Backlog item: [JDR-004](../ISSUES.md#jdr-004-meeting-capture-and-transcripts).
 

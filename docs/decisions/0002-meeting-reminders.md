@@ -1,6 +1,6 @@
 # 0002: Meeting reminders
 
-Status: provisional. The team still needs to confirm this before treating it as final. It was chosen so JDR-002 could be implemented without inventing a broader permission model or a late-delivery policy. It follows the conservative recovery default already proposed in the architecture: skip reminder offsets that are already past, and keep future ones.
+Status: provisional. The behavior below is what [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15) merged. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). The team still needs to confirm this before treating it as final. The live reminder smoke check has not been run, so GitHub issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open. It was chosen so JDR-002 could be implemented without inventing a broader permission model or a late-delivery policy. It follows the conservative recovery default already described in the architecture: skip reminder offsets that are already past, and keep future ones.
 
 ## Who can manage meetings
 
