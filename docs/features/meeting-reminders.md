@@ -1,6 +1,6 @@
 # Meeting configuration and reminders
 
-Status: merged in [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). Offline tests cover the behavior below. A live reminder in the Discord test server has not been demonstrated, and [decision 0002](../decisions/0002-meeting-reminders.md) is provisional and needs team confirmation, so GitHub issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open.
+Status: merged in [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) added the stored-guild-zone fallback for an omitted zone. Offline tests cover the behavior below. A live reminder in the Discord test server has not been demonstrated, and [decision 0002](../decisions/0002-meeting-reminders.md) is provisional and needs team confirmation, so GitHub issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open.
 
 Backlog item: [JDR-002](../ISSUES.md#jdr-002-meeting-configuration-and-reminders).
 

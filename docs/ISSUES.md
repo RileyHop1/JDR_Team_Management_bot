@@ -9,14 +9,14 @@ A row is "merged" only when the pull request is on `main` and hosted CI passed. 
 | JDR-001 | Development foundation and Discord commands | [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5) (open) | [PR #9](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/9) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/38816010204) | None |
 | JDR-002 | Meeting configuration and reminders | [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) (open) | [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688) | JDR-001 |
 | JDR-003 | Jira morning brief | [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) (open) | [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833) | JDR-001; scheduler from JDR-002 |
-| JDR-004 | Meeting capture and transcripts | [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) (open) | Not started | JDR-001; meeting model from JDR-002; voice feasibility |
+| JDR-004 | Meeting capture and transcripts | [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) (open) | [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the planning document only; implementation not started | JDR-001; meeting model from JDR-002; voice feasibility |
 | JDR-005 | Actionable startup failure categories | [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) (closed) | [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270) | JDR-001; brief settings from JDR-003; guild schema from JDR-006 |
 | JDR-006 | Persisted guild configuration | [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) (closed) | [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) merged; [CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559) | JDR-001; consumed by JDR-002 and JDR-003 |
 | JDR-007 | Hosting decision and production deployment runbook | [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12) (open) | Not started | JDR-001; informs JDR-004 |
-| JDR-008 | Documentation status sync | [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) | This status record; the pull request that adds it closes #13 | None |
+| JDR-008 | Documentation status sync | [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) (open) | This status record; the pull request that adds it closes #13 | None |
 | JDR-009 | GitHub issue and pull request templates | [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14) (open) | Not started | None |
 
-Still outstanding after the merged pull requests above: the live Discord smoke check for JDR-001, the live reminder check and team confirmation of [decision 0002](decisions/0002-meeting-reminders.md), the live Jira brief check and team confirmation of [decision 0003](decisions/0003-jira-morning-brief.md), the live `/config` check and team confirmation of [decision 0004](decisions/0004-guild-configuration.md), meeting transcripts (JDR-004), the hosting runbook (JDR-007), and GitHub templates (JDR-009). [Decision 0001](decisions/0001-development-foundation.md) and [decision 0005](decisions/0005-startup-failures.md) are accepted for the merged implementation. Decision 0005 does not ask for a further team confirmation.
+Still outstanding after the merged pull requests above: the live Discord smoke check for JDR-001, the live reminder check and team confirmation of [decision 0002](decisions/0002-meeting-reminders.md), the live Jira brief check and team confirmation of [decision 0003](decisions/0003-jira-morning-brief.md), the live `/config` check and team confirmation of [decision 0004](decisions/0004-guild-configuration.md), meeting-transcript implementation (JDR-004; [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the planning document only), the hosting runbook (JDR-007), and GitHub templates (JDR-009). [Decision 0001](decisions/0001-development-foundation.md) and [decision 0005](decisions/0005-startup-failures.md) are accepted for the merged implementation. Decision 0005 does not ask for a further team confirmation. Issue [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) stays open until the pull request that adds this record merges.
 
 ## JDR-001: Development foundation
 
@@ -65,7 +65,7 @@ The team confirmation in the first criterion and the test-resource demonstration
 
 ## JDR-004: Meeting capture and transcripts
 
-Not started. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) is open. No pull request has implemented this feature. See [meeting transcripts](features/meeting-transcripts.md).
+[PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the planning document on 2026-10-15 and included no application code. Implementation has not started. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) is open. See [meeting transcripts](features/meeting-transcripts.md).
 
 Capture explicitly authorized meetings and deliver transcripts to the approved meetings channel.
 
@@ -105,7 +105,7 @@ Not started. GitHub issue [#12](https://github.com/RileyHop1/JDR_Team_Management
 
 ## JDR-008: Documentation status
 
-GitHub issue [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) asks these status lines to match merged work. This page is that record. The pull request that introduces this wording closes the issue. No product behavior is in scope.
+GitHub issue [#13](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/13) is open. It asks these status lines to match merged work. This page is that record. The pull request that introduces this wording closes the issue; the issue stays open until that merge. No product behavior is in scope.
 
 ## JDR-009: GitHub issue and pull request templates
 

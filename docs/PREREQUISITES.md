@@ -1,19 +1,19 @@
 # Prerequisites and decisions
 
-Foundation dependencies are declared in `pyproject.toml` and pinned in `uv.lock`; see [development instructions](DEVELOPMENT.md). This checklist is for the first implementation and controlled integration tests.
+Foundation dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. PostgreSQL 16 is the development and CI baseline. Migrations `0001` through `0004` are on `main`. Provisioning and the disposable `_test` database are in [development instructions](DEVELOPMENT.md). This checklist covers accounts, the settings the process reads, and decisions that are still open.
 
 ## Accounts and permissions
 
 - A private Discord test server and an application/bot created in the Discord Developer Portal. A maintainer must install it using the bot and application-command scopes.
 - Grant only the channel permissions required for the implemented feature: view channels, send messages, attach transcript files, and connect to the selected voice channel. Add other permissions only with a documented reason; do not grant Administrator.
 - Enable gateway intents only when the selected library and feature require them. Slash commands should not require reading every message. Prove voice receive support and applicable intents before selecting the library.
-- Read-only Jira access to the chosen project or saved filter, including issue fields needed for the brief. Decide whether this is Jira Cloud or a self-hosted deployment and select supported authentication accordingly.
+- Read-only Jira Cloud access to the chosen project, including the issue fields needed for the brief. [Decision 0003](decisions/0003-jira-morning-brief.md) provisionally selects Jira Cloud (`https://<site>.atlassian.net`) and HTTP Basic authentication with `JIRA_USER_EMAIL` and `JIRA_API_TOKEN`. Self-hosted Jira is not selected. Confirm Cloud before treating that choice as final.
 - An approved transcription provider, or an explicitly selected local model with adequate compute, storage, and model licensing. Confirm supported audio formats, limits, cost, and retention.
-- PostgreSQL for the proposed persistence layer. Pin its supported version and document provisioning when implementation starts.
+- PostgreSQL 16 for the persistence layer. CI uses the `postgres:16` image, and [development instructions](DEVELOPMENT.md) document local provisioning. The integration tests need a disposable database whose name ends in `_test`.
 
-## Proposed configuration contract
+## Configuration contract
 
-The foundation reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_OPERATOR_ROLE_ID`, `DATABASE_URL`, and `BOT_TIMEZONE`. `MEETINGS_CHANNEL_ID` is an optional default for the stored meetings channel. The morning-brief names are read when that feature is enabled. `TRANSCRIPTION_API_KEY` remains proposed. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
+`Settings` reads the names below from the environment or a local `.env`. The morning brief stays off until its group is complete. When the brief is on, `JIRA_STATUS_NAMES` is required unless `JIRA_JQL` is set. `TRANSCRIPTION_API_KEY` is not read; transcription is not implemented. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
 
 | Name | Purpose | Sensitive? |
 | --- | --- | --- |
@@ -25,13 +25,14 @@ The foundation reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_OPERATOR_
 | `BOT_TIMEZONE` | IANA time zone used when the guild has not stored one. | No |
 | `BRIEF_TIME` | Local `HH:MM` brief time, unless a brief time is stored. | No |
 | `DATABASE_URL` | PostgreSQL connection string. | Usually contains credentials |
-| `JIRA_BASE_URL` | Approved Jira deployment URL. | No |
-| `JIRA_PROJECT_KEY` | Initial project scope. | No |
-| `JIRA_JQL` | Optional team-approved query overriding the default project/status query. | Treat as internal configuration |
-| `JIRA_USER_EMAIL` / `JIRA_API_TOKEN` | Possible Jira Cloud authentication; deployment choice may require another method. | Token is secret; email is personal data |
-| `TRANSCRIPTION_API_KEY` | Provider authentication if remote transcription is selected. | Yes |
+| `JIRA_BASE_URL` | Jira Cloud site, `https://<site>.atlassian.net`. Required when the brief is on. | No |
+| `JIRA_PROJECT_KEY` | Project key. Required when the brief is on. | No |
+| `JIRA_STATUS_NAMES` | Comma-separated exact status names. Required when the brief is on unless `JIRA_JQL` is set. | Treat as internal configuration |
+| `JIRA_JQL` | Optional query that replaces the project/status query. Not posted or logged. | Treat as internal configuration |
+| `JIRA_USER_EMAIL` / `JIRA_API_TOKEN` | Provisional Jira Cloud HTTP Basic authentication ([decision 0003](decisions/0003-jira-morning-brief.md)). Required when the brief is on. | Token is secret; email is personal data |
+| `TRANSCRIPTION_API_KEY` | Not read. Provider authentication if remote transcription is selected later. | Yes |
 
-Voice channel, meeting start, reminder offsets, allowed operators, and per-guild settings belong in validated persistent configuration. Do not guess channel IDs, credentials, Jira status names, default recording retention, or the team's time zone.
+A meeting stores its voice channel, start, time zone, and reminder offsets. Guild configuration stores the meetings channel, brief channel, IANA zone, and brief time ([decision 0004](decisions/0004-guild-configuration.md)). Allowed operators stay in `DISCORD_OPERATOR_ROLE_ID`. Jira credentials, the project key, status names, and JQL stay in the process environment ([decision 0003](decisions/0003-jira-morning-brief.md)). Do not guess channel IDs, credentials, Jira status names, default recording retention, or the team's time zone.
 
 ## Networking
 

@@ -10,7 +10,7 @@ These behaviors are merged on `main`, and hosted CI passed on each pull request.
 - Guild configuration, [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559)). Issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) is closed. The `/config` smoke check below has not been run, and [decision 0004](decisions/0004-guild-configuration.md) still needs team confirmation.
 - Startup failure categories, [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270)). Issue [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) is closed. [Decision 0005](decisions/0005-startup-failures.md) is accepted for this implementation. No separate live Discord check was required.
 
-Not started: meeting transcripts (issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8)), the hosting runbook (issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12)), and GitHub issue and pull request templates (issue [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14)).
+[PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the meeting-transcript planning document only; implementation has not started (issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8)). Not started: the hosting runbook (issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12)) and GitHub issue and pull request templates (issue [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14)).
 
 ## Install
 

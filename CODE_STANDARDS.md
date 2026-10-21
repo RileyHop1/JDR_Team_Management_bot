@@ -1,6 +1,6 @@
 # Code standards
 
-These rules are the review baseline for future implementation. Ruff formatting/lint, strict mypy for production modules, and pytest are configured in CI; see `docs/DEVELOPMENT.md` for exact commands.
+These rules are the review baseline. Ruff formatting and lint, strict mypy for production modules, and pytest run in CI; see `docs/DEVELOPMENT.md` for exact commands.
 
 ## Readability and structure
 
@@ -45,7 +45,7 @@ These rules are the review baseline for future implementation. Ruff formatting/l
 - Add integration tests for storage and provider adapters, including pagination, timeouts, rate limits, denied permissions, malformed responses, and restart recovery where relevant.
 - Test observable outcomes and regression cases. A test that repeats the production algorithm is weak evidence.
 - Use synthetic or redacted fixtures with no real meeting content. Keep live-service checks opt-in and isolated to test resources.
-- Require formatting, lint, static typing, and relevant tests in CI before merge once implemented. Document exact commands in the README.
+- CI already runs formatting, lint, static typing, and tests before merge. Exact commands are in the README and in `docs/DEVELOPMENT.md`.
 - Treat coverage as a diagnostic, not a substitute for assertions. Do not disable checks, weaken assertions, or add blanket exclusions to get a green build.
 
 ## Review and maintainability

@@ -1,6 +1,6 @@
 # 0003: Jira morning brief
 
-Status: provisional. The behavior below is what [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) merged. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833)). The team still needs to confirm this before treating it as final. The live Jira and Discord brief check has not been run, so GitHub issue [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) stays open. It was chosen so JDR-003 could be implemented without guessing a Jira deployment, status names, or a weekend policy. Where the prerequisites left a choice open, the narrower option is used.
+Status: provisional. [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) merged the Jira Cloud brief. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833)). [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) applied [decision 0004](0004-guild-configuration.md): a stored guild channel, brief time, and zone override the environment values below. The team still needs to confirm this before treating it as final. The live Jira and Discord brief check has not been run, so GitHub issue [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) stays open. It was chosen so JDR-003 could be implemented without guessing a Jira deployment, status names, or a weekend policy. Where the prerequisites left a choice open, the narrower option is used.
 
 ## Jira access
 

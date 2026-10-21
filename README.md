@@ -19,7 +19,7 @@ Still outstanding: the live Discord and Jira smoke checks; team confirmation of 
 - Produce a transcript and post it to a configured Discord meetings channel.
 - Post a scheduled morning brief showing Jira issues currently being worked on, their assignees, statuses, and links.
 
-Reminders and the morning brief are implemented offline under the provisional decisions linked above. Joining a voice meeting and posting a transcript are not implemented.
+Reminders and the morning brief are implemented offline under the provisional decisions linked above. Joining a voice meeting and posting a transcript are not implemented. [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the planning document only.
 
 The initial target is meetings held in a Discord voice channel. Supporting Zoom, Teams, or Google Meet would require a separate integration and design decision. Voice capture feasibility must be validated before promising automatic transcription.
 
