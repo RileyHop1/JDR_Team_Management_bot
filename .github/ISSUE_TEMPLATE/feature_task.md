@@ -1,12 +1,12 @@
 ---
 name: Feature or task
 about: User outcome, scope, acceptance criteria, dependencies, and how to verify.
-title: "JDR-00N: "
+title: "JDR-NNN: "
 ---
 
 Do not post secrets, tokens, credential-bearing URLs, real transcripts, or other real meeting content.
 
-<!-- Keep the title in the form `JDR-00N: Title`. Replace `N` and `Title`. -->
+<!-- Keep the title in the form `JDR-NNN: Title`. Replace `NNN` with the next three-digit zero-padded ID and replace `Title`. The next free ID is in [implementation issues](../../docs/ISSUES.md). -->
 
 ## User outcome
 
@@ -30,7 +30,7 @@ None.
 
 ## How to verify
 
-For code, record `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and `uv run pytest -v` against a disposable PostgreSQL database whose name ends in `_test`. For documentation only, record link and content checks instead of code tests.
+For code, record `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and `TEST_DATABASE_URL=postgresql+psycopg://jdr:jdr@localhost:5432/jdr_test uv run pytest -v`. Point `TEST_DATABASE_URL` at a disposable PostgreSQL database whose name ends in `_test`. CI uses `postgresql+psycopg://jdr:jdr@localhost:5432/jdr_test`. Report the skipped count. A run that skips the PostgreSQL tests does not satisfy the check. For documentation only, record link and content checks instead of code tests.
 
 <!-- Add any issue-specific smoke check or other proof here. -->
 

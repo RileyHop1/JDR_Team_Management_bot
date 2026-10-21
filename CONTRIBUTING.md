@@ -6,11 +6,11 @@ Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.
 
 ## Where work is tracked
 
-Track work in GitHub issues, using the backlog in [implementation issues](docs/ISSUES.md). Each `JDR-00N` label is a planning ID for a GitHub issue. It is not a Jira ticket key. Jira is the external tracker the morning brief reads. It is not the board for this repository.
+Track work in GitHub issues, using the backlog in [implementation issues](docs/ISSUES.md). Each planning ID is a three-digit zero-padded label for a GitHub issue. The next free ID is the next unused ID in that backlog. It is not a Jira ticket key. Jira is the external tracker the morning brief reads. It is not the board for this repository.
 
-Put the planning ID in the branch name, for example `feat/JDR-004-meeting-transcripts` or `fix/JDR-002-duplicate-reminders`. Link the pull request to the GitHub issue number (`#8` for JDR-004). Do not put a Jira key in the branch name. An isolated cloud task may be required to use a `cursor/<description>-<suffix>` branch. When that happens, put the `JDR-00N` ID in the pull request title or body.
+Put the planning ID in the branch name, for example `feat/JDR-004-meeting-transcripts` or `fix/JDR-002-duplicate-reminders`. Link the pull request to the GitHub issue number (`#8` for JDR-004). Use `Refs #N` when a live check or team confirmation is still outstanding. Use `Closes #N` only when the pull request fully completes the issue. Do not put a Jira key in the branch name. An isolated cloud task may be required to use a `cursor/<description>-<suffix>` branch. When that happens, put the `JDR-NNN` ID in the pull request title or body.
 
-Open a GitHub issue from the [feature or task template](.github/ISSUE_TEMPLATE/feature_task.md). Title it `JDR-00N: Title`. The template asks for the user outcome, scope, acceptance criteria, dependencies, how to verify the result, and the delivery workflow. Open a pull request from the [pull request template](.github/pull_request_template.md). Do not post secrets or real meeting content in either. If you cannot open a GitHub issue, ask a maintainer through the team's existing communication channel.
+Open a GitHub issue from the [feature or task template](.github/ISSUE_TEMPLATE/feature_task.md). Title it `JDR-NNN: Title`, using a three-digit zero-padded ID. The next free ID is in [implementation issues](docs/ISSUES.md). The template asks for the user outcome, scope, acceptance criteria, dependencies, how to verify the result, and the delivery workflow. Open a pull request from the [pull request template](.github/pull_request_template.md). Do not post secrets or real meeting content in either. If you cannot open a GitHub issue, ask a maintainer through the team's existing communication channel.
 
 ## Development workflow
 
