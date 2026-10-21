@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
+from jdr_bot.startup import MIGRATION_COMMAND, SchemaOutdated
 from jdr_bot.storage import SCHEMA_REVISION, check_database, create_engine
 
 
@@ -55,8 +56,10 @@ async def test_postgres_migration_roundtrip_and_isolation():
             assert await connection.scalar(text("SELECT count(*) FROM guild_configurations")) == 0
             await connection.execute(text("UPDATE alembic_version SET version_num = 'obsolete'"))
             await connection.commit()
-        with pytest.raises(RuntimeError, match="schema is outdated"):
+        with pytest.raises(SchemaOutdated) as outdated:
             await check_database(engine)
+        assert MIGRATION_COMMAND in str(outdated.value)
+        assert "obsolete" not in str(outdated.value)
         async with engine.begin() as connection:
             await connection.execute(
                 text("UPDATE alembic_version SET version_num = :revision"),

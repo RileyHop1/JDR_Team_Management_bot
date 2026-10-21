@@ -21,6 +21,7 @@ from jdr_bot.brief_policy import (
     WEEKDAYS_ONLY,
 )
 from jdr_bot.domain import JobState, as_utc
+from jdr_bot.startup import BriefSettingError
 
 _PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9]{1,9}\Z")
 _ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d{1,18}\Z")
@@ -162,10 +163,12 @@ class ClaimedBrief:
 
 
 def validated_project_key(value: str) -> str:
-    """Return a Jira project key, or raise ValueError without echoing it."""
+    """Return a Jira project key, or raise BriefSettingError without echoing it."""
     key = value.strip()
     if _PROJECT_KEY.fullmatch(key) is None:
-        raise ValueError("JIRA_PROJECT_KEY must be an uppercase project key")
+        raise BriefSettingError(
+            "jira_project_key", "JIRA_PROJECT_KEY must be an uppercase project key"
+        )
     return key
 
 
@@ -187,18 +190,20 @@ def validated_base_url(value: str) -> str:
         or host.startswith(".")
         or parts.port not in (None, 443)
     ):
-        raise ValueError("JIRA_BASE_URL must be an https://<site>.atlassian.net URL")
+        raise BriefSettingError(
+            "jira_base_url", "JIRA_BASE_URL must be an https://<site>.atlassian.net URL"
+        )
     return f"https://{host}"
 
 
 def validated_email(value: str) -> str:
-    """Return a single email address, or raise ValueError without echoing it."""
+    """Return a single email address, or raise BriefSettingError without echoing it."""
     email = value.strip()
     if len(email) > 254 or email.count("@") != 1 or any(char.isspace() for char in email):
-        raise ValueError("JIRA_USER_EMAIL must be a single email address")
+        raise BriefSettingError("jira_user_email", "JIRA_USER_EMAIL must be a single email address")
     local, _, domain = email.partition("@")
     if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
-        raise ValueError("JIRA_USER_EMAIL must be a single email address")
+        raise BriefSettingError("jira_user_email", "JIRA_USER_EMAIL must be a single email address")
     return email
 
 
@@ -206,7 +211,7 @@ def validated_jql(value: str) -> str:
     """Return a single-line JQL string. The caller must not log it."""
     jql = value.strip()
     if not jql or len(jql) > MAX_JQL_LENGTH or any(ord(char) < 32 for char in jql):
-        raise ValueError("JIRA_JQL must be a single line up to 500 characters")
+        raise BriefSettingError("jira_jql", "JIRA_JQL must be a single line up to 500 characters")
     return jql
 
 
@@ -214,7 +219,7 @@ def parse_brief_time(value: str) -> tuple[int, int]:
     """Parse ``HH:MM`` in 24-hour form."""
     match = _BRIEF_TIME.fullmatch(value.strip())
     if match is None:
-        raise ValueError("BRIEF_TIME must be HH:MM in 24-hour time")
+        raise BriefSettingError("brief_time", "BRIEF_TIME must be HH:MM in 24-hour time")
     return int(match.group(1)), int(match.group(2))
 
 
@@ -224,11 +229,15 @@ def parse_status_names(value: str | None) -> tuple[str, ...]:
         return ()
     names = tuple(part.strip() for part in value.split(","))
     if len(names) > MAX_STATUS_NAMES:
-        raise ValueError("JIRA_STATUS_NAMES accepts at most 10 statuses")
+        raise BriefSettingError(
+            "jira_status_names", "JIRA_STATUS_NAMES accepts at most 10 statuses"
+        )
     if any(not name or _STATUS_NAME.fullmatch(name) is None for name in names):
-        raise ValueError("JIRA_STATUS_NAMES must be comma-separated status names")
+        raise BriefSettingError(
+            "jira_status_names", "JIRA_STATUS_NAMES must be comma-separated status names"
+        )
     if len(set(names)) != len(names):
-        raise ValueError("JIRA_STATUS_NAMES must not repeat a status")
+        raise BriefSettingError("jira_status_names", "JIRA_STATUS_NAMES must not repeat a status")
     return names
 
 
@@ -254,11 +263,19 @@ def compile_schedule(
     status_names: str | None,
     custom_jql: str | None,
 ) -> BriefSchedule:
-    """Validate brief settings into a schedule. Raises ValueError with no secret text."""
+    """Validate brief settings into a schedule.
+
+    Raises BriefSettingError. The field name is fixed and the message contains
+    no secret text. A zone failure uses ``bot_timezone``, which startup logs as
+    ``invalid_configuration`` rather than ``invalid_jira_configuration``.
+    Settings already rejects ``bot_timezone`` before this check.
+    """
     if channel_id <= 0 or channel_id >= 2**63:
-        raise ValueError("brief_channel_id must be a positive Discord channel id")
+        raise BriefSettingError(
+            "brief_channel_id", "brief_channel_id must be a positive Discord channel id"
+        )
     if not timezone_name or len(timezone_name) > 64:
-        raise ValueError("use an IANA time zone such as America/Los_Angeles")
+        raise BriefSettingError("bot_timezone", "use an IANA time zone such as America/Los_Angeles")
     hour, minute = parse_brief_time(brief_time)
     key = validated_project_key(project_key)
     browse = validated_base_url(base_url)
@@ -267,7 +284,7 @@ def compile_schedule(
         custom = validated_jql(custom_jql)
     names = None if custom is not None else parse_status_names(status_names)
     if custom is None and not names:
-        raise ValueError("set JIRA_STATUS_NAMES or JIRA_JQL")
+        raise BriefSettingError("jira_status_names", "set JIRA_STATUS_NAMES or JIRA_JQL")
     jql = custom if custom is not None else build_default_jql(key, names or ())
     return BriefSchedule(
         guild_id=guild_id,

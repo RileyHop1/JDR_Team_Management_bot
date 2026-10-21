@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from jdr_bot.config import Settings
 from jdr_bot.guild_config import StoredGuildConfig
+from jdr_bot.startup import InvalidJiraConfiguration
 
 
 def test_invalid_settings_hide_secret_values(settings):
@@ -44,11 +45,12 @@ def test_valid_timezone(settings):
 def test_brief_is_off_until_the_group_is_complete(settings):
     values = settings.model_dump()
     values["jira_base_url"] = "https://example.atlassian.net"
-    with pytest.raises(ValidationError) as error:
+    with pytest.raises(InvalidJiraConfiguration) as error:
         Settings(_env_file=None, **values)
     message = str(error.value)
-    assert "brief_channel_id" in message
-    assert "jira_api_token" in message
+    assert error.value.category == "invalid_jira_configuration"
+    assert "brief_channel_id" in error.value.fields
+    assert "jira_api_token" in error.value.fields
     assert "example.atlassian.net" not in message
 
 
@@ -65,15 +67,20 @@ def test_brief_settings_hide_token_and_build_a_schedule(settings):
             "jira_api_token": "synthetic-jira-token",
         }
     )
-    with pytest.raises(ValidationError) as error:
+    with pytest.raises(InvalidJiraConfiguration) as error:
         Settings(_env_file=None, **values)
+    assert error.value.fields == ("jira_base_url",)
     assert "secret-pass" not in str(error.value)
     assert "synthetic-jira-token" not in str(error.value)
+    assert error.value.__cause__ is not None
+    assert "secret-pass" not in str(error.value.__cause__)
+    assert "synthetic-jira-token" not in str(error.value.__cause__)
 
     values["jira_base_url"] = "https://example.atlassian.net"
     values["jira_api_token"] = "replace-with-jira-api-token"
-    with pytest.raises(ValidationError) as replaced:
+    with pytest.raises(InvalidJiraConfiguration) as replaced:
         Settings(_env_file=None, **values)
+    assert replaced.value.fields == ("jira_api_token",)
     assert "replace-with-jira-api-token" not in str(replaced.value)
 
     values["jira_api_token"] = "synthetic-jira-token"

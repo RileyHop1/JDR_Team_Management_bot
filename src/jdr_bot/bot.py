@@ -28,6 +28,7 @@ from jdr_bot.meeting_service import MeetingService
 from jdr_bot.ports import ReminderRunner, SystemClock
 from jdr_bot.reminder_scheduler import ReminderScheduler
 from jdr_bot.scheduler import ApplicationScheduler
+from jdr_bot.startup import DiscordLoginFailed, GuildSyncForbidden, StartupFailure
 from jdr_bot.storage import SqlMeetingStore, check_database
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,9 @@ class TeamBot(discord.Client):
         self._start_scheduler()
         try:
             await self.tree.sync(guild=self.guild)
+        except discord.Forbidden as error:
+            await self._stop_scheduler()
+            raise GuildSyncForbidden() from error
         except Exception:
             await self._stop_scheduler()
             raise
@@ -199,11 +203,32 @@ class TeamBot(discord.Client):
         await interaction.response.defer(ephemeral=True)
         try:
             await check_database(self.engine)
-        except (SQLAlchemyError, RuntimeError):
+        except (StartupFailure, SQLAlchemyError, RuntimeError) as error:
             # Never emit driver exceptions: connection details may contain credentials.
-            logger.error("database_readiness_failed")
+            if isinstance(error, StartupFailure):
+                logger.error("database_readiness_failed category=%s", error.category)
+            else:
+                logger.error("database_readiness_failed")
             await interaction.followup.send(
                 "Database unavailable; contact a maintainer.", ephemeral=True
             )
         else:
             await interaction.followup.send("Database ready.", ephemeral=True)
+
+
+async def start_client(bot: TeamBot, token: str) -> None:
+    """Run the Discord client and translate credential rejection.
+
+    Guild sync forbidden is translated in ``TeamBot.setup_hook``. Response
+    bodies are not copied onto the replacement error.
+    """
+    try:
+        await bot.start(token)
+    except StartupFailure:
+        raise
+    except discord.LoginFailure as error:
+        raise DiscordLoginFailed() from error
+    except discord.HTTPException as error:
+        if error.status == 401:
+            raise DiscordLoginFailed() from error
+        raise

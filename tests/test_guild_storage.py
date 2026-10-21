@@ -12,6 +12,7 @@ from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from jdr_bot.domain import NewJob, NewMeeting
 from jdr_bot.guild_config import GuildConfigChange
 from jdr_bot.guild_storage import SqlGuildConfigStore
+from jdr_bot.startup import MIGRATION_COMMAND, SchemaOutdated
 from jdr_bot.storage import SCHEMA_REVISION, SqlMeetingStore, check_database, create_engine
 
 UTC_TZ = UTC
@@ -144,8 +145,9 @@ async def test_postgres_guild_configuration_downgrade_drops_stored_values():
             )
             await connection.execute(text("SELECT id FROM brief_jobs"))
         assert guild_id == 123
-        with pytest.raises(RuntimeError, match="schema is outdated"):
+        with pytest.raises(SchemaOutdated) as outdated:
             await check_database(engine)
+        assert MIGRATION_COMMAND in str(outdated.value)
         await migrate(url, "upgrade", "head")
         await check_database(engine)
         restored = await SqlGuildConfigStore(engine).get(123)

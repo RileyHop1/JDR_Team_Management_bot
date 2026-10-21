@@ -11,6 +11,7 @@ from sqlalchemy.exc import ArgumentError
 from jdr_bot.brief import BriefSchedule, compile_schedule, validated_email
 from jdr_bot.guild_config import EnvGuildDefaults, StoredGuildConfig
 from jdr_bot.policy import MAX_TIMEZONE_LENGTH
+from jdr_bot.startup import InvalidJiraConfiguration, failure_for_brief_setting
 
 
 class Settings(BaseSettings):
@@ -117,7 +118,7 @@ class Settings(BaseSettings):
         if self.jira_jql is None and self.jira_status_names is None:
             missing.append("jira_status_names")
         if missing:
-            raise ValueError("missing brief settings: " + ", ".join(missing))
+            raise InvalidJiraConfiguration(tuple(sorted(missing)))
         token = self.jira_api_token
         channel_id = self.brief_channel_id
         brief_time = self.brief_time
@@ -133,18 +134,21 @@ class Settings(BaseSettings):
             or email is None
             or token.get_secret_value().startswith("replace-")
         ):
-            raise ValueError("set a real Jira API token in secure configuration")
-        validated_email(email)
-        compile_schedule(
-            guild_id=self.discord_guild_id,
-            channel_id=channel_id,
-            timezone_name=self.bot_timezone,
-            brief_time=brief_time,
-            base_url=base_url,
-            project_key=project_key,
-            status_names=self.jira_status_names,
-            custom_jql=self.jira_jql,
-        )
+            raise InvalidJiraConfiguration(("jira_api_token",))
+        try:
+            validated_email(email)
+            compile_schedule(
+                guild_id=self.discord_guild_id,
+                channel_id=channel_id,
+                timezone_name=self.bot_timezone,
+                brief_time=brief_time,
+                base_url=base_url,
+                project_key=project_key,
+                status_names=self.jira_status_names,
+                custom_jql=self.jira_jql,
+            )
+        except ValueError as error:
+            raise failure_for_brief_setting(error) from error
         return self
 
     def guild_defaults(self) -> EnvGuildDefaults:
