@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from jdr_bot.config import Settings
+from jdr_bot.guild_config import GuildConfigChange, GuildConfigService
 from jdr_bot.meeting_commands import MeetingCommands
 from jdr_bot.meeting_service import MeetingService
+from tests.guild_fakes import MemoryGuildConfigStore
 from tests.support import FakeClock, MemoryMeetingStore, team_channels
 from tests.test_bot import interaction
 
@@ -13,10 +15,15 @@ START = "2026-06-01 14:00"
 NOON = datetime(2026, 6, 1, 12, tzinfo=UTC)
 
 
-def commands_for(settings, clock=None):
+def commands_for(settings, clock=None, guild_config=None):
     store = MemoryMeetingStore()
-    meetings = MeetingService(store, team_channels(), clock or FakeClock(NOON))
-    context = SimpleNamespace(settings=settings, meetings=meetings)
+    channels = team_channels()
+    meetings = MeetingService(store, channels, clock or FakeClock(NOON))
+    if guild_config is None:
+        guild_config = GuildConfigService(
+            MemoryGuildConfigStore(), channels, settings.guild_defaults()
+        )
+    context = SimpleNamespace(settings=settings, meetings=meetings, guild_config=guild_config)
     return MeetingCommands(context), meetings, store
 
 
@@ -79,6 +86,46 @@ async def test_operator_can_create_and_sees_validation_errors(settings):
         offsets="15",
     )
     assert "YYYY-MM-DD" in rejected.followup.send.await_args.args[0]
+
+
+async def test_omitted_zone_uses_the_stored_guild_zone(settings):
+    service = GuildConfigService(
+        MemoryGuildConfigStore(), team_channels(), settings.guild_defaults()
+    )
+    await service.update(123, GuildConfigChange(timezone_name="America/Los_Angeles"))
+    clock = FakeClock(datetime(2026, 6, 1, 12, tzinfo=UTC))
+    group, _, store = commands_for(settings, clock, guild_config=service)
+    request = interaction(roles=[456])
+    await group.create_meeting(
+        request,
+        title="Design review",
+        start="2026-06-01 14:00",
+        text_channel=channel(10),
+        voice_channel=channel(11),
+        offsets="60",
+        timezone="",
+    )
+    saved = await store.list_meetings(123, None, 10)
+    assert saved[0].timezone_name == "America/Los_Angeles"
+    assert saved[0].starts_at == datetime(2026, 6, 1, 21, tzinfo=UTC)
+
+    explicit = interaction(roles=[456])
+    await group.create_meeting(
+        explicit,
+        title="Follow up",
+        start="2026-06-01 18:00",
+        text_channel=channel(10),
+        voice_channel=channel(11),
+        offsets="60",
+        timezone="UTC",
+    )
+    meetings = await store.list_meetings(123, None, 10)
+    follow_up = next(item for item in meetings if item.title == "Follow up")
+    original = next(item for item in meetings if item.title == "Design review")
+    assert follow_up.timezone_name == "UTC"
+    assert follow_up.starts_at == datetime(2026, 6, 1, 18, tzinfo=UTC)
+    assert original.timezone_name == "America/Los_Angeles"
+    assert original.starts_at == datetime(2026, 6, 1, 21, tzinfo=UTC)
 
 
 async def test_blank_timezone_uses_configured_zone(settings):

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
-from jdr_bot.brief import BriefJobRecord, ClaimedBrief, NewBriefJob
+from jdr_bot.brief import BriefJobRecord, BriefRefresh, BriefSchedule, ClaimedBrief, NewBriefJob
 from jdr_bot.domain import (
     ChannelFacts,
     ClaimedReminder,
@@ -235,6 +235,11 @@ class BriefDelivery(Protocol):
         """Send every part. Raise DeliveryError instead of a provider exception."""
 
 
+class BriefScheduleSource(Protocol):
+    async def current_schedule(self) -> BriefSchedule | None:
+        """Return the schedule for this poll. None skips brief planning and delivery."""
+
+
 class BriefStore(Protocol):
     async def list_relevant(self, guild_id: int, local_today: date) -> Sequence[BriefJobRecord]:
         """Return open jobs and jobs on or after the local date."""
@@ -277,3 +282,9 @@ class BriefStore(Protocol):
         receipt: str | None,
     ) -> None:
         """Retry a transient failure or record a terminal failure."""
+
+    async def apply_refresh(self, refresh: BriefRefresh) -> bool:
+        """Update a never-attempted scheduled job. Return False if it was not scheduled."""
+
+    async def redirect_channel(self, job_id: int, channel_id: int) -> bool:
+        """Point a scheduled retry at another channel. Leave the due time unchanged."""

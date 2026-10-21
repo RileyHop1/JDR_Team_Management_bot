@@ -9,6 +9,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 from jdr_bot.brief import BriefSchedule, compile_schedule, validated_email
+from jdr_bot.guild_config import EnvGuildDefaults, StoredGuildConfig
+from jdr_bot.policy import MAX_TIMEZONE_LENGTH
 
 
 class Settings(BaseSettings):
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     discord_operator_role_id: int = Field(gt=0)
     database_url: SecretStr
     bot_timezone: str = "UTC"
+    meetings_channel_id: int | None = None
     brief_channel_id: int | None = None
     brief_time: str | None = None
     jira_base_url: str | None = None
@@ -51,13 +54,19 @@ class Settings(BaseSettings):
     @field_validator("bot_timezone")
     @classmethod
     def require_timezone(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("use an IANA time zone such as America/Los_Angeles") from None
+        _require_zone(value)
         return value
 
-    @field_validator("brief_channel_id", mode="before")
+    @field_validator("meetings_channel_id")
+    @classmethod
+    def require_meetings_channel(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value <= 0 or value >= 2**63:
+            raise ValueError("meetings_channel_id must be a positive Discord channel id")
+        return value
+
+    @field_validator("brief_channel_id", "meetings_channel_id", mode="before")
     @classmethod
     def blank_channel(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -138,14 +147,34 @@ class Settings(BaseSettings):
         )
         return self
 
-    def brief_schedule(self) -> BriefSchedule | None:
-        """Build the schedule seam used by the brief. None leaves the brief off.
+    def guild_defaults(self) -> EnvGuildDefaults:
+        """Environment fallback for fields the guild row has not stored."""
+        return EnvGuildDefaults(
+            timezone_name=self.bot_timezone,
+            meetings_channel_id=self.meetings_channel_id,
+            brief_channel_id=self.brief_channel_id,
+            brief_time=self.brief_time,
+        )
 
-        Issue #11 can replace this method with stored guild settings. Credentials
-        stay in the environment and are not part of the schedule.
+    def brief_schedule(self, guild: StoredGuildConfig | None = None) -> BriefSchedule | None:
+        """Build the brief schedule from stored non-secret fields, then the environment.
+
+        A missing row, or a null field on that row, uses the environment value.
+        A stored non-null field replaces only that field. A row for a different
+        guild is ignored. Credentials stay in the environment and are not part
+        of the schedule. None leaves the brief off.
         """
         channel_id = self.brief_channel_id
         brief_time = self.brief_time
+        timezone_name = self.bot_timezone
+        if guild is not None and guild.guild_id == self.discord_guild_id:
+            if guild.brief_channel_id is not None:
+                channel_id = guild.brief_channel_id
+            if guild.brief_time is not None:
+                brief_time = guild.brief_time
+            if guild.timezone_name is not None:
+                _require_zone(guild.timezone_name)
+                timezone_name = guild.timezone_name
         base_url = self.jira_base_url
         project_key = self.jira_project_key
         email = self.jira_user_email
@@ -161,13 +190,22 @@ class Settings(BaseSettings):
         return compile_schedule(
             guild_id=self.discord_guild_id,
             channel_id=channel_id,
-            timezone_name=self.bot_timezone,
+            timezone_name=timezone_name,
             brief_time=brief_time,
             base_url=base_url,
             project_key=project_key,
             status_names=self.jira_status_names,
             custom_jql=self.jira_jql,
         )
+
+
+def _require_zone(value: str) -> None:
+    if not value or len(value) > MAX_TIMEZONE_LENGTH:
+        raise ValueError("use an IANA time zone such as America/Los_Angeles")
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError("use an IANA time zone such as America/Los_Angeles") from None
 
 
 def _brief_requested(settings: Settings) -> bool:

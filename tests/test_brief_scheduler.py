@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from jdr_bot.brief import EMPTY_BRIEF_LINE, NewBriefJob
+from jdr_bot.brief import EMPTY_BRIEF_LINE, BriefSchedule, NewBriefJob
 from jdr_bot.brief_scheduler import BriefScheduler
 from jdr_bot.brief_service import BriefService
 from jdr_bot.domain import JobState
@@ -435,3 +436,149 @@ async def test_cancel_during_send_keeps_the_claim():
         await task
     assert store.only().state is JobState.CLAIMED
     assert delivery.sent == []
+
+
+class MutableSchedule:
+    def __init__(self, schedule: BriefSchedule) -> None:
+        self.schedule = schedule
+
+    async def current_schedule(self) -> BriefSchedule | None:
+        return self.schedule
+
+
+def sourced(store, clock, reader, delivery, source: MutableSchedule):
+    return BriefScheduler(
+        store,
+        delivery,
+        BriefService(reader, source.schedule),
+        clock,
+        source.schedule,
+        schedule_source=source,
+    )
+
+
+async def test_future_brief_picks_up_a_new_channel_and_time():
+    clock = FakeClock(datetime(2026, 6, 1, 8, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    source = MutableSchedule(utc_schedule())
+    running = sourced(store, clock, FakeJira(pages=[page()]), delivery, source)
+    await running.run_once()
+    original = store.only()
+    assert original.channel_id == 10
+    assert original.due_at == datetime(2026, 6, 1, 9, tzinfo=UTC_TZ)
+    source.schedule = utc_schedule(channel_id=20, hour=10, minute=30)
+    await running.run_once()
+    updated = store.only()
+    assert updated.id == original.id
+    assert updated.channel_id == 20
+    assert updated.due_at == datetime(2026, 6, 1, 10, 30, tzinfo=UTC_TZ)
+    assert updated.state is JobState.SCHEDULED
+    assert delivery.sent == []
+    clock.set(datetime(2026, 6, 1, 10, 30, tzinfo=UTC_TZ))
+    await running.run_once()
+    assert len(delivery.sent) == 1
+    monday = next(job for job in store.jobs.values() if job.local_date == date(2026, 6, 1))
+    assert monday.state is JobState.DELIVERED
+    assert monday.channel_id == 20
+    source.schedule = utc_schedule(channel_id=21, hour=10, minute=30)
+    clock.set(datetime(2026, 6, 1, 10, 31, tzinfo=UTC_TZ))
+    await running.run_once()
+    assert len(delivery.sent) == 1
+    monday = next(job for job in store.jobs.values() if job.local_date == date(2026, 6, 1))
+    tuesday = next(job for job in store.jobs.values() if job.local_date == date(2026, 6, 2))
+    assert monday.channel_id == 20
+    assert monday.state is JobState.DELIVERED
+    assert tuesday.channel_id == 21
+    assert tuesday.state is JobState.SCHEDULED
+
+
+async def test_retry_moves_channel_and_keeps_the_due_instant():
+    clock = FakeClock(datetime(2026, 6, 1, 9, 1, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    await store.insert_job(
+        NewBriefJob(
+            guild_id=123,
+            channel_id=10,
+            local_date=date(2026, 6, 1),
+            due_at=datetime(2026, 6, 1, 9, tzinfo=UTC_TZ),
+            timezone_name="UTC",
+            state=JobState.SCHEDULED,
+            failure_category=None,
+        )
+    )
+    job = store.only()
+    store.jobs[job.id] = replace(
+        job,
+        attempt_count=1,
+        retry_at=datetime(2026, 6, 1, 9, 5, tzinfo=UTC_TZ),
+        failure_category="rate_limited",
+    )
+    source = MutableSchedule(utc_schedule(channel_id=20, hour=11))
+    delivery = FakeBriefDelivery()
+    await sourced(store, clock, FakeJira(pages=[page()]), delivery, source).run_once()
+    saved = store.only()
+    assert saved.channel_id == 20
+    assert saved.due_at == datetime(2026, 6, 1, 9, tzinfo=UTC_TZ)
+    assert saved.attempt_count == 1
+    assert saved.retry_at == datetime(2026, 6, 1, 9, 5, tzinfo=UTC_TZ)
+    assert delivery.sent == []
+
+
+async def test_gap_after_a_time_change_is_not_sent():
+    clock = FakeClock(datetime(2026, 3, 8, 12, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    source = MutableSchedule(
+        utc_schedule(timezone_name="America/Los_Angeles", hour=9, weekdays_only=False)
+    )
+    await sourced(store, clock, FakeJira(pages=[page()]), delivery, source).run_once()
+    assert store.only().state is JobState.SCHEDULED
+    source.schedule = utc_schedule(
+        timezone_name="America/Los_Angeles", hour=2, minute=30, weekdays_only=False
+    )
+    await sourced(store, clock, FakeJira(pages=[page()]), delivery, source).run_once()
+    states = {job.local_date: (job.state, job.failure_category) for job in store.jobs.values()}
+    assert states[date(2026, 3, 8)] == (JobState.SKIPPED, "dst_gap")
+    assert states[date(2026, 3, 9)][0] is JobState.SCHEDULED
+    assert delivery.sent == []
+
+
+async def test_unavailable_schedule_leaves_rows_unchanged(caplog: pytest.LogCaptureFixture):
+    caplog.set_level(logging.INFO)
+    clock = FakeClock(datetime(2026, 6, 1, 9, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    await store.insert_job(
+        NewBriefJob(
+            guild_id=123,
+            channel_id=10,
+            local_date=date(2026, 6, 1),
+            due_at=datetime(2026, 6, 1, 9, tzinfo=UTC_TZ),
+            timezone_name="UTC",
+            state=JobState.SCHEDULED,
+            failure_category=None,
+        )
+    )
+    job = store.only()
+    store.jobs[job.id] = replace(job, state=JobState.CLAIMED, claim_token="claim-token")
+
+    class Unavailable:
+        async def current_schedule(self) -> BriefSchedule | None:
+            raise RuntimeError("synthetic-secret")
+
+    delivery = FakeBriefDelivery()
+    schedule = utc_schedule()
+    await BriefScheduler(
+        store,
+        delivery,
+        BriefService(FakeJira(pages=[page()]), schedule),
+        clock,
+        schedule,
+        schedule_source=Unavailable(),
+    ).run_once()
+    assert delivery.sent == []
+    assert store.only().state is JobState.CLAIMED
+    assert store.only().channel_id == 10
+    assert "synthetic-secret" not in caplog.text
+    assert "brief_schedule_lookup_failed" in caplog.text
+    assert "brief_schedule_unavailable" in caplog.text

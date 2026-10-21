@@ -2,7 +2,7 @@
 
 ## Get oriented
 
-Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The foundation supports basic commands, storage, durable meeting reminders, and a read-only Jira morning brief. Transcripts are still outstanding, and the live Discord and Jira checks have not been completed. Follow [development instructions](docs/DEVELOPMENT.md) to set up and verify changes.
+Read the [overview](docs/PROJECT_OVERVIEW.md), [architecture](docs/ARCHITECTURE.md), [prerequisites](docs/PREREQUISITES.md), [security policy](SECURITY.md), and [code standards](CODE_STANDARDS.md) before implementation. The foundation supports basic commands, storage, durable meeting reminders, a read-only Jira morning brief, and operator-managed guild settings. Transcripts are still outstanding, and the live Discord and Jira checks have not been completed. Follow [development instructions](docs/DEVELOPMENT.md) to set up and verify changes.
 
 Coordinate work using Jira. Each issue should state the user outcome, scope, acceptance criteria, dependencies, and how to verify the result. Link your pull request to its issue. If you do not have board access, ask a maintainer through the team's existing communication channel.
 
@@ -25,6 +25,7 @@ Coordinate work using Jira. Each issue should state the user outcome, scope, acc
 - Extend the validated configuration model and placeholder-only example as features require.
 - Confirm [decision 0002](docs/decisions/0002-meeting-reminders.md) with the team before treating the reminder policy as final.
 - Confirm [decision 0003](docs/decisions/0003-jira-morning-brief.md) with the team before treating the Jira query, weekday schedule, or brief recovery policy as final.
+- Confirm [decision 0004](docs/decisions/0004-guild-configuration.md) with the team before treating stored guild settings, environment fallback, or the brief-job update rule as final.
 - Complete the live Discord foundation smoke check and the meeting-reminder smoke check in [development instructions](docs/DEVELOPMENT.md).
 - Prove voice capture and transcription feasibility separately, using synthetic audio and a private test server with consenting participants.
 

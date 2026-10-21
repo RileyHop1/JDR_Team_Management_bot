@@ -2,23 +2,28 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from jdr_bot.brief import (
+    BriefJobRecord,
     BriefSchedule,
     ClaimedBrief,
     plan_brief,
+    redirect_retry_channels,
+    refresh_unattempted_briefs,
     render_brief,
     render_failure,
     zone_local_date,
 )
 from jdr_bot.brief_service import BriefService
-from jdr_bot.domain import as_utc
+from jdr_bot.domain import JobState, as_utc
 from jdr_bot.policy import CLAIM_BATCH_LIMIT, MAX_DELIVERY_ATTEMPTS, retry_delay
 from jdr_bot.ports import (
     BriefDelivery,
     BriefMessage,
     BriefQueryError,
+    BriefScheduleSource,
     BriefStore,
     Clock,
     DeliveryError,
@@ -35,7 +40,11 @@ class BriefScheduler:
     leaves the job claimed. The next poll marks that claim unreconciled and
     does not send it again. Cancellation during the Jira read, before any
     send, releases that claim so the same local day can still be delivered.
-    See docs/decisions/0003-jira-morning-brief.md.
+    When a schedule source is injected, each poll reloads it and rewrites
+    future never-attempted jobs before planning. An unavailable schedule
+    skips the poll and leaves existing rows unchanged.
+    See docs/decisions/0003-jira-morning-brief.md and
+    docs/decisions/0004-guild-configuration.md.
     """
 
     def __init__(
@@ -46,6 +55,7 @@ class BriefScheduler:
         clock: Clock,
         schedule: BriefSchedule,
         *,
+        schedule_source: BriefScheduleSource | None = None,
         max_attempts: int = MAX_DELIVERY_ATTEMPTS,
         batch_limit: int = CLAIM_BATCH_LIMIT,
     ) -> None:
@@ -54,18 +64,25 @@ class BriefScheduler:
         self._service = service
         self._clock = clock
         self._schedule = schedule
+        self._schedule_source = schedule_source
+        self._schedule_available = True
         self._max_attempts = max_attempts
         self._batch_limit = batch_limit
 
     async def run_once(self) -> None:
         """Skip missed days, ensure the next occurrence, and deliver today's job."""
+        schedule = await self._resolved_schedule()
+        if schedule is None:
+            return
         now = as_utc(self._clock.now())
-        local_today = zone_local_date(now, self._schedule.timezone_name)
-        unreconciled = await self._store.unreconcile_claims(self._schedule.guild_id)
+        local_today = zone_local_date(now, schedule.timezone_name)
+        unreconciled = await self._store.unreconcile_claims(schedule.guild_id)
         if unreconciled:
             logger.info("briefs_unreconciled count=%s", unreconciled)
-        existing = await self._store.list_relevant(self._schedule.guild_id, local_today)
-        plan = plan_brief(now, self._schedule, existing)
+        existing = await self._store.list_relevant(schedule.guild_id, local_today)
+        await self._apply_schedule(schedule, existing, now)
+        existing = await self._store.list_relevant(schedule.guild_id, local_today)
+        plan = plan_brief(now, schedule, existing)
         for skip in plan.skips:
             await self._store.apply_skip(skip.job_id, skip.state, skip.category)
             logger.info("brief_not_sent job_id=%s category=%s", skip.job_id, skip.category)
@@ -82,7 +99,7 @@ class BriefScheduler:
                     draft.failure_category,
                 )
         claimed = await self._store.claim_due(
-            guild_id=self._schedule.guild_id,
+            guild_id=schedule.guild_id,
             now=now,
             local_today=local_today,
             limit=self._batch_limit,
@@ -98,6 +115,38 @@ class BriefScheduler:
                     job.job_id,
                     type(exc).__name__,
                 )
+
+    async def _resolved_schedule(self) -> BriefSchedule | None:
+        if self._schedule_source is None:
+            return self._schedule
+        try:
+            loaded = await self._schedule_source.current_schedule()
+        except Exception as exc:
+            logger.error("brief_schedule_lookup_failed error_type=%s", type(exc).__name__)
+            loaded = None
+        if loaded is None and self._schedule_available:
+            logger.info("brief_schedule_unavailable")
+        elif loaded is not None and not self._schedule_available:
+            logger.info("brief_schedule_ready")
+        self._schedule_available = loaded is not None
+        return loaded
+
+    async def _apply_schedule(
+        self, schedule: BriefSchedule, jobs: Sequence[BriefJobRecord], now: datetime
+    ) -> None:
+        for refresh in refresh_unattempted_briefs(now, schedule, jobs):
+            changed = await self._store.apply_refresh(refresh)
+            if not changed:
+                continue
+            if refresh.state is JobState.SKIPPED:
+                category = refresh.failure_category or "dst_gap"
+                logger.info("brief_not_sent job_id=%s category=%s", refresh.job_id, category)
+            else:
+                logger.info("brief_rescheduled job_id=%s", refresh.job_id)
+        for redirect in redirect_retry_channels(now, schedule, jobs):
+            changed = await self._store.redirect_channel(redirect.job_id, redirect.channel_id)
+            if changed:
+                logger.info("brief_channel_updated job_id=%s", redirect.job_id)
 
     async def _deliver(self, job: ClaimedBrief, now: datetime) -> None:
         try:

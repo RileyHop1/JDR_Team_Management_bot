@@ -2,7 +2,7 @@
 
 ## Credentials
 
-Never commit tokens, database passwords, credential-bearing URLs, or real recordings. Use an approved secret store or ignored local configuration. Validate required settings without printing their values. Redact credentials from errors and logs. Restrict Jira credentials to read-only access and scope Discord permissions to the configured server/channels.
+Never commit tokens, database passwords, credential-bearing URLs, or real recordings. Use an approved secret store or ignored local configuration. Validate required settings without printing their values. Redact credentials from errors and logs. Restrict Jira credentials to read-only access and scope Discord permissions to the configured server/channels. Guild configuration rows store channels, an IANA time zone, and a brief time only. Do not put Jira tokens, account email, or JQL in those rows.
 
 If a credential is exposed, revoke or rotate it immediately, notify the maintainers privately, and remove it from affected systems. Deleting a Git file alone does not remove a credential from history or invalidate it.
 

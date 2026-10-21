@@ -10,7 +10,7 @@ All `/meeting` commands are guild-scoped, ephemeral, and require the configured 
 
 | Command | Behavior |
 | --- | --- |
-| `/meeting create` | Title, local start, text channel, voice channel, and comma-separated minute offsets. Time zone defaults to `BOT_TIMEZONE`. |
+| `/meeting create` | Title, local start, text channel, voice channel, and comma-separated minute offsets. An omitted time zone uses the stored guild zone, or `BOT_TIMEZONE` when none is stored. |
 | `/meeting list` | Up to 10 scheduled meetings, soonest first. |
 | `/meeting view` | One meeting and its reminder states. Cancelled reminder rows are hidden. |
 | `/meeting update` | Change any stored field. At least one field is required. A new time zone also requires a new start. |
@@ -30,7 +30,7 @@ A reminder is sent only during a 60-second grace period after it becomes due. Ol
 
 ## Operation
 
-Apply migration `0002` with the documented Alembic command. No new environment variable is required. `BOT_TIMEZONE` is the IANA default when `/meeting create` omits the zone. Run one bot process. Logs record meeting and job ids, states, and error categories. They do not record titles, message text, tokens, or exception strings.
+Apply migrations through `0004` with the documented Alembic command. No new environment variable is required. When `/meeting create` omits the zone, the stored guild zone is used, and `BOT_TIMEZONE` is used when that column is null. Changing the guild zone does not rewrite meetings that already exist. Run one bot process. Logs record meeting and job ids, states, and error categories. They do not record titles, message text, tokens, or exception strings.
 
 Shutdown cancels the scheduler task before the Discord connection closes. A claimed job that does not finish is left claimed and follows the receipt rule above on the next start.
 
@@ -38,7 +38,7 @@ Shutdown cancels the scheduler task before the Discord connection closes. A clai
 
 - `Operator role required.`: the member is outside the configured guild or does not hold `DISCORD_OPERATOR_ROLE_ID`. Administrator is not sufficient.
 - `Use the start format YYYY-MM-DD HH:MM.`: the start was not a minute-precision local time.
-- `Use an IANA time zone such as America/Los_Angeles.`: the zone is empty, unknown, or longer than 64 characters. An omitted command option uses `BOT_TIMEZONE` instead.
+- `Use an IANA time zone such as America/Los_Angeles.`: the zone is empty, unknown, or longer than 64 characters. An omitted command option uses the stored guild zone, or `BOT_TIMEZONE` when that is unset.
 - `That local time does not exist` or `happens twice`: choose a wall time outside the daylight-saving gap or overlap.
 - `The meeting start must be in the future` or `would already be due`: move the start later or shorten the offset.
 - `Choose a text channel` or `Choose a voice channel`: the channel is the wrong type, is outside the guild, or the bot cannot view it. The text channel also needs Send Messages.

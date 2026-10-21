@@ -10,7 +10,7 @@ The adapter calls `GET /rest/api/3/search/jql` and requests only `summary`, `sta
 
 A 200 body is a search result only when `issues` is an array. A payload such as `{}` or `{"errorMessages": [...]}` is `malformed_response`, not an empty brief. The response body is read with a byte cap and is not logged. HTTP 429 uses `Retry-After` when that header is a delay or an HTTP date, and the wait is capped at 15 minutes so one brief cannot be postponed for hours. A missing or invalid header keeps the usual 15-second then 30-second backoff. The retry waits at least as long as the longer of those two.
 
-Credentials are process-wide environment settings. `Settings.brief_schedule()` is the seam that turns those settings into a `BriefSchedule` with no secrets. A later guild-config change (issue #11) can build the same object from stored non-secret fields. The token and email stay in the environment.
+Credentials are process-wide environment settings. `Settings.brief_schedule()` is the seam that turns settings into a `BriefSchedule` with no secrets. Issue #11, recorded in [decision 0004](0004-guild-configuration.md), fills the channel, time, and zone from stored guild settings when those fields are set. The token and email stay in the environment, as do the base URL, project, statuses, and JQL.
 
 ## Query
 

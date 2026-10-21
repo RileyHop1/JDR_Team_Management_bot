@@ -49,6 +49,7 @@ async def test_ping_and_guild_isolation(settings):
         "ping",
         "status",
         "meeting",
+        "config",
     }
     meeting = bot.tree.get_command("meeting", guild=bot.guild)
     assert meeting is not None
@@ -59,6 +60,9 @@ async def test_ping_and_guild_isolation(settings):
         "update",
         "cancel",
     }
+    config = bot.tree.get_command("config", guild=bot.guild)
+    assert config is not None
+    assert {command.name for command in config.commands} == {"view", "set"}
     assert bot.intents.guilds
     assert not bot.intents.members
     assert not bot.intents.message_content

@@ -35,13 +35,13 @@ uv run --env-file .env alembic upgrade head
 uv run jdr-bot
 ```
 
-Migrations require only `DATABASE_URL`. Never run migrations against an unknown database. Generate future migrations with `uv run --env-file .env alembic revision --autogenerate -m "description"`, inspect the generated SQL/Python, and update the application's expected schema revision. Back up deployed databases before schema changes; downgrade may delete data.
+Migrations require only `DATABASE_URL`. Never run migrations against an unknown database. Generate future migrations with `uv run --env-file .env alembic revision --autogenerate -m "description"`, inspect the generated SQL/Python, and update the application's expected schema revision. Revision `0004` adds nullable guild settings. Downgrading it deletes those stored values. Back up deployed databases before schema changes; downgrade may delete data.
 
 ## Discord smoke check (required before issue #5 is complete)
 
 1. Install a dedicated test bot in a private test guild with `bot` and `applications.commands` scopes. Permit viewing the test channel and sending messages; no Administrator or privileged intents are required for these commands.
 2. Set `DISCORD_GUILD_ID` and `DISCORD_OPERATOR_ROLE_ID` to the test guild and its dedicated operator role. Grant yourself that role.
-3. Start the migrated application. Startup verifies the schema before syncing `/ping`, `/status`, and `/meeting` to that guild only. Guild sync replaces that application's existing commands in the selected guild; use a dedicated bot during development.
+3. Start the migrated application. Startup verifies the schema before syncing `/ping`, `/status`, `/meeting`, and `/config` to that guild only. Guild sync replaces that application's existing commands in the selected guild; use a dedicated bot during development.
 4. Run `/ping` and expect an ephemeral `Pong!`. As an operator, run `/status` and expect `Database ready.`
 5. As a member without the configured role, run `/status` and expect `Operator role required.` Administrators also need the configured role.
 6. Send SIGTERM or press Ctrl-C. Confirm the process exits and the bot disconnects. Restart it and repeat `/ping`.
@@ -52,7 +52,7 @@ A successful offline test is not evidence that this live check passed. Record th
 
 This check has not been run. Offline tests do not replace it.
 
-1. Complete the foundation smoke check above. Apply migrations through revision `0003` (`alembic upgrade head`). The process rejects an older schema even when the morning brief is left unset.
+1. Complete the foundation smoke check above. Apply migrations through revision `0004` (`alembic upgrade head`). The process rejects an older schema even when the morning brief is left unset. Downgrading from `0004` to `0003` drops stored guild settings.
 2. As an operator, run `/meeting create` with a synthetic title, a start a few minutes ahead, `BOT_TIMEZONE` or an explicit IANA zone, a text channel the bot can post in, a different voice channel it can view, and offset `1`.
 3. Confirm the ephemeral reply shows the meeting id, local start, UTC instant, and `1 min before: scheduled`. As a member without the operator role, confirm `/meeting list` returns `Operator role required.`
 4. Wait until one minute before the start. Confirm one reminder appears in the text channel, with no user or role mentions, and that `/meeting view` shows `delivered` plus a message id.
@@ -65,13 +65,26 @@ Do not put real meeting titles, attendance, or tokens in the PR. Say only whethe
 
 This check has not been run. Offline tests do not replace it. Use a Jira user that cannot edit issues, and a private Discord channel.
 
-1. Complete the foundation smoke check. Apply migrations through revision `0003`.
+1. Complete the foundation smoke check. Apply migrations through revision `0004`. A stored brief channel, time, or time zone overrides the environment value. With no guild row, `BRIEF_CHANNEL_ID`, `BRIEF_TIME`, and `BOT_TIMEZONE` are used.
 2. Set `BRIEF_CHANNEL_ID` to a text channel the bot can view and send in. Set `BRIEF_TIME` a few minutes ahead in `BOT_TIMEZONE`, on a weekday. Set `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `JIRA_USER_EMAIL`, and `JIRA_API_TOKEN`. Set `JIRA_STATUS_NAMES` to the team's confirmed statuses, or set `JIRA_JQL` to the confirmed query.
 3. Start the process. The log should include `brief_scheduler_enabled` and must not include the token, the email, or the JQL text.
 4. At the local brief time, confirm one message in the brief channel. It should list issue key, title, assignee or `unassigned`, status, and a browse URL, with no user or role mentions. An assignee that Jira returns without a display name is `assignee name unavailable`, not `unassigned`. If the query matches nothing, the message includes the `Morning brief for …` header, either `Statuses: …` or `Using the configured Jira query.`, and the line `No issues match the configured Jira query.` It must not invent issues.
 5. Restart the process the same day and confirm the brief is not posted a second time. A row whose local date has already passed should not be posted on a later day.
 
 Do not put real issue titles, assignee names, JQL, or tokens in the PR. Say only whether each step passed.
+
+## Guild configuration smoke check (required before issue #11 is complete)
+
+This check has not been run. Offline tests do not replace it.
+
+1. Complete the foundation smoke check. Apply migrations through revision `0004`.
+2. As an operator, run `/config view`. With no stored row, the time zone should be `BOT_TIMEZONE` and marked `environment`. Meetings channel and brief time are `not set` unless those environment values are present.
+3. Run `/config set` with a text channel the bot can view and send in, an IANA zone, and a brief time such as `09:30`. The reply should mark those values `stored`. As a member without the operator role, `/config view` returns `Operator role required.`
+4. Run `/meeting create` and omit the zone. The meeting should use the stored zone. Set the zone explicitly on another meeting and confirm that meeting keeps the explicit zone.
+5. If the brief is enabled, change the brief channel or time with `/config set`. The next poll should use the new channel and time for a future brief. A brief already delivered that day should not be posted again.
+6. Run `/config set` with `clear` set to the time zone. `/config view` should show `BOT_TIMEZONE` as `environment` again.
+
+Do not put tokens or private channel names in the PR. Say only whether each step passed.
 
 ## Quality checks
 
@@ -99,5 +112,6 @@ Run `createdb` only once. The integration tests upgrade the schema, and the foun
 - Failed `/status`: inspect database health and migration revision. Queries and connection attempts have bounded timeouts.
 - Reminder jobs and, when configured, the morning brief run in one background task inside this process. Voice receive and transcription are not implemented. Two processes on the same database can deliver the same reminder or brief twice.
 - A reminder older than 60 seconds is skipped, not sent late. See [meeting reminders](features/meeting-reminders.md) for command errors and job states.
-- A morning brief is sent only on its local weekday, including later that same day. Older brief rows are not posted late. See [Jira morning brief](features/jira-morning-brief.md). The brief stays off until its environment group is complete.
+- A morning brief is sent only on its local weekday, including later that same day. Older brief rows are not posted late. See [Jira morning brief](features/jira-morning-brief.md). The brief stays off until its environment group is complete. A stored brief channel, time, or zone overrides that environment on the next poll. See [guild configuration](features/guild-configuration.md).
+- `/config` changes the guild defaults. It does not rewrite meetings that already exist. Clearing a stored field returns that field to the environment. `guild_config_updated` logs field names only.
 - discord.py currently emits an upstream Python `audioop` deprecation warning; the project stays on Python 3.12 pending a tested upgrade.

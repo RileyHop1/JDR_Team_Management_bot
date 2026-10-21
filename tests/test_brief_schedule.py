@@ -5,11 +5,14 @@ from datetime import UTC, date, datetime
 import pytest
 
 from jdr_bot.brief import (
+    BriefChannelRedirect,
     BriefJobRecord,
     build_default_jql,
     compile_schedule,
     parse_status_names,
     plan_brief,
+    redirect_retry_channels,
+    refresh_unattempted_briefs,
     resolve_brief_instant,
     validated_base_url,
     validated_jql,
@@ -144,14 +147,21 @@ def _job(
     state: JobState,
     attempt_count: int = 0,
     failure_category: str | None = None,
+    channel_id: int = 10,
+    timezone_name: str = "UTC",
+    due_at: datetime | None = None,
 ) -> BriefJobRecord:
     return BriefJobRecord(
         id=job_id,
         guild_id=123,
-        channel_id=10,
+        channel_id=channel_id,
         local_date=local_date,
-        due_at=datetime(local_date.year, local_date.month, local_date.day, 9, tzinfo=UTC_TZ),
-        timezone_name="UTC",
+        due_at=(
+            datetime(local_date.year, local_date.month, local_date.day, 9, tzinfo=UTC_TZ)
+            if due_at is None
+            else due_at
+        ),
+        timezone_name=timezone_name,
         state=state,
         attempt_count=attempt_count,
         retry_at=None,
@@ -159,4 +169,65 @@ def _job(
         delivery_receipt=None,
         failure_category=failure_category,
         issue_count=None,
+    )
+
+
+def test_future_brief_picks_up_channel_zone_and_time():
+    schedule = utc_schedule(channel_id=20, timezone_name="America/Los_Angeles", hour=10, minute=30)
+    job = _job(local_date=date(2026, 6, 1), state=JobState.SCHEDULED)
+    changes = refresh_unattempted_briefs(datetime(2026, 6, 1, 8, tzinfo=UTC_TZ), schedule, (job,))
+    assert len(changes) == 1
+    assert changes[0].channel_id == 20
+    assert changes[0].timezone_name == "America/Los_Angeles"
+    assert changes[0].due_at == datetime(2026, 6, 1, 17, 30, tzinfo=UTC_TZ)
+    assert changes[0].state is JobState.SCHEDULED
+    assert changes[0].failure_category is None
+
+
+def test_refresh_leaves_finished_claimed_and_past_jobs():
+    schedule = utc_schedule(channel_id=20, hour=10, minute=30)
+    now = datetime(2026, 6, 2, 8, tzinfo=UTC_TZ)
+    jobs = (
+        _job(job_id=1, local_date=date(2026, 6, 1), state=JobState.SCHEDULED),
+        _job(job_id=2, local_date=date(2026, 6, 2), state=JobState.DELIVERED),
+        _job(job_id=3, local_date=date(2026, 6, 2), state=JobState.CLAIMED),
+        _job(job_id=4, local_date=date(2026, 6, 2), state=JobState.SKIPPED),
+        _job(job_id=5, local_date=date(2026, 6, 2), state=JobState.FAILED),
+        _job(job_id=6, local_date=date(2026, 6, 2), state=JobState.UNRECONCILED),
+    )
+    assert refresh_unattempted_briefs(now, schedule, jobs) == ()
+    assert redirect_retry_channels(now, schedule, jobs) == ()
+
+
+def test_retry_changes_channel_without_a_new_due_instant():
+    schedule = utc_schedule(channel_id=20, hour=11)
+    job = _job(
+        local_date=date(2026, 6, 1),
+        state=JobState.SCHEDULED,
+        attempt_count=1,
+        failure_category="rate_limited",
+    )
+    now = datetime(2026, 6, 1, 9, 1, tzinfo=UTC_TZ)
+    assert refresh_unattempted_briefs(now, schedule, (job,)) == ()
+    assert redirect_retry_channels(now, schedule, (job,)) == (BriefChannelRedirect(1, 20),)
+    past = _job(job_id=2, local_date=date(2026, 6, 1), state=JobState.SCHEDULED, attempt_count=1)
+    assert redirect_retry_channels(datetime(2026, 6, 2, 8, tzinfo=UTC_TZ), schedule, (past,)) == ()
+
+
+def test_refresh_marks_a_daylight_saving_gap_and_skips_an_unchanged_job():
+    gap = utc_schedule(timezone_name="America/Los_Angeles", hour=2, minute=30, weekdays_only=False)
+    job = _job(
+        local_date=date(2026, 3, 8),
+        state=JobState.SCHEDULED,
+        timezone_name="America/Los_Angeles",
+        due_at=datetime(2026, 3, 8, 16, tzinfo=UTC_TZ),
+    )
+    changes = refresh_unattempted_briefs(datetime(2026, 3, 8, 12, tzinfo=UTC_TZ), gap, (job,))
+    assert changes[0].state is JobState.SKIPPED
+    assert changes[0].failure_category == "dst_gap"
+    current = utc_schedule()
+    unchanged = _job(local_date=date(2026, 6, 1), state=JobState.SCHEDULED)
+    assert (
+        refresh_unattempted_briefs(datetime(2026, 6, 1, 8, tzinfo=UTC_TZ), current, (unchanged,))
+        == ()
     )

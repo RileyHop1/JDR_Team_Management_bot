@@ -8,13 +8,13 @@ The bot posts a weekday morning brief of Jira issues that match a configured rea
 
 ## Configuration
 
-The brief stays off until every required setting is present. A partial group fails startup and names the missing fields without printing values. `Settings.brief_schedule()` is the only runtime seam; issue #11 can later build that same object from guild configuration. Credentials are not part of the schedule and are not stored in PostgreSQL.
+The brief stays off until every required environment setting is present. A partial group fails startup and names the missing fields without printing values. `Settings.brief_schedule()` builds the schedule from stored guild channel, time, and zone when those columns are set, and otherwise from the environment. Credentials are not part of the schedule and are not stored in PostgreSQL. See [guild configuration](guild-configuration.md).
 
 | Name | Required when the brief is on | Notes |
 | --- | --- | --- |
-| `BRIEF_CHANNEL_ID` | Yes | Discord text channel that receives the brief. |
-| `BRIEF_TIME` | Yes | Local `HH:MM`, 24-hour. The example uses `09:00`. |
-| `BOT_TIMEZONE` | Already required | IANA zone for `BRIEF_TIME`. |
+| `BRIEF_CHANNEL_ID` | Yes | Discord text channel that receives the brief, unless `/config` has stored a brief channel. |
+| `BRIEF_TIME` | Yes | Local `HH:MM`, 24-hour. The example uses `09:00`. A stored brief time overrides it. |
+| `BOT_TIMEZONE` | Already required | IANA zone for `BRIEF_TIME`, unless `/config` has stored a zone. |
 | `JIRA_BASE_URL` | Yes | `https://<site>.atlassian.net` only. |
 | `JIRA_PROJECT_KEY` | Yes | Uppercase project key. |
 | `JIRA_STATUS_NAMES` | Yes, unless `JIRA_JQL` is set | Comma-separated exact status names. |
@@ -38,7 +38,9 @@ The brief channel must belong to `DISCORD_GUILD_ID`. A text channel in another g
 
 ## Operation
 
-Apply migration `0003` (`uv run --env-file .env alembic upgrade head`). The process checks that revision even when the brief is disabled. Run one bot process. Logs record job ids, issue counts, and error categories. They do not record JQL, issue titles, assignee names, tokens, or response bodies.
+Apply migration `0004` (`uv run --env-file .env alembic upgrade head`). The process checks that revision even when the brief is disabled. Run one bot process. Logs record job ids, issue counts, and error categories. They do not record JQL, issue titles, assignee names, tokens, or response bodies.
+
+A `/config set` that changes the brief channel, time, or zone is picked up on the next poll. Future brief jobs that have not been attempted use the new channel, zone, and time for the same local date. A delivered brief is not posted again. A retry keeps its due instant and moves to the new channel. See [decision 0004](../decisions/0004-guild-configuration.md).
 
 Two processes on the same database can deliver the same brief twice. Discord and PostgreSQL cannot commit together: a crash after the send can leave one message in the channel and an `unreconciled` row.
 
