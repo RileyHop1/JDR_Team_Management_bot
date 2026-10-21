@@ -14,7 +14,7 @@ The operator supplies:
 
 - a title of at most 100 characters, with surrounding and repeated whitespace collapsed;
 - a local start as `YYYY-MM-DD HH:MM` (`T` is accepted in place of the space);
-- an IANA time zone, or an empty zone so the command uses `BOT_TIMEZONE`;
+- an IANA time zone, or an empty zone so the command uses the stored guild zone from [decision 0004](0004-guild-configuration.md), then `BOT_TIMEZONE`;
 - a text channel the bot can view and send in, and a different voice channel the bot can view;
 - one to five unique offsets of 1 to 10080 minutes (7 days).
 

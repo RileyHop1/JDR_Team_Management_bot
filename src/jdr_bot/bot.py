@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from jdr_bot.authorization import can_manage
+from jdr_bot.brief import BriefSchedule
 from jdr_bot.brief_scheduler import BriefScheduler
 from jdr_bot.brief_service import BriefService
 from jdr_bot.brief_storage import SqlBriefStore
@@ -18,6 +19,9 @@ from jdr_bot.discord_adapters import (
     DiscordChannelDirectory,
     DiscordReminderDelivery,
 )
+from jdr_bot.guild_commands import ConfigCommands
+from jdr_bot.guild_config import GuildBriefScheduleSource, GuildConfigService, StoredGuildConfig
+from jdr_bot.guild_storage import SqlGuildConfigStore
 from jdr_bot.jira import HttpJiraReader
 from jdr_bot.meeting_commands import MeetingCommands
 from jdr_bot.meeting_service import MeetingService
@@ -51,6 +55,10 @@ class TeamBot(discord.Client):
         self._scheduler_task: asyncio.Task[None] | None = None
         store = SqlMeetingStore(engine)
         clock = SystemClock()
+        self._guild_store = SqlGuildConfigStore(engine)
+        self.guild_config = GuildConfigService(
+            self._guild_store, DiscordChannelDirectory(self), settings.guild_defaults()
+        )
         self.meetings = (
             meetings
             if meetings is not None
@@ -77,6 +85,7 @@ class TeamBot(discord.Client):
             guild=self.guild,
         )
         self.tree.add_command(MeetingCommands(self), guild=self.guild)
+        self.tree.add_command(ConfigCommands(self), guild=self.guild)
 
     async def setup_hook(self) -> None:
         """Fail startup on database errors; register commands only in the selected guild."""
@@ -115,12 +124,19 @@ class TeamBot(discord.Client):
                 api_token=token.get_secret_value(),
             )
             self._jira = reader
+
+            def build(stored: StoredGuildConfig | None) -> BriefSchedule | None:
+                return self.settings.brief_schedule(stored)
+
             briefs = BriefScheduler(
                 SqlBriefStore(self.engine),
                 DiscordBriefDelivery(self),
                 BriefService(reader, schedule),
                 clock,
                 schedule,
+                schedule_source=GuildBriefScheduleSource(
+                    self.settings.discord_guild_id, self._guild_store, build
+                ),
             )
         if briefs is None:
             logger.info("brief_scheduler_disabled")

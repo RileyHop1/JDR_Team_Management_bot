@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import date, datetime
 from uuid import uuid4
 
-from jdr_bot.brief import BriefJobRecord, BriefSchedule, ClaimedBrief, NewBriefJob
+from jdr_bot.brief import BriefJobRecord, BriefRefresh, BriefSchedule, ClaimedBrief, NewBriefJob
 from jdr_bot.domain import JobState, as_utc
 from jdr_bot.ports import (
     BriefMessage,
@@ -183,6 +183,32 @@ class MemoryBriefStore:
             retry_at=None if terminal or retry_at is None else as_utc(retry_at),
             delivery_receipt=job.delivery_receipt if receipt is None else receipt[:64],
         )
+
+    async def apply_refresh(self, refresh: BriefRefresh) -> bool:
+        job = self.jobs.get(refresh.job_id)
+        if job is None or job.state is not JobState.SCHEDULED or job.attempt_count != 0:
+            return False
+        failure = None if refresh.failure_category is None else refresh.failure_category[:64]
+        self.jobs[refresh.job_id] = replace(
+            job,
+            channel_id=refresh.channel_id,
+            due_at=as_utc(refresh.due_at),
+            timezone_name=refresh.timezone_name,
+            state=refresh.state,
+            failure_category=failure,
+            retry_at=None if refresh.state is JobState.SKIPPED else job.retry_at,
+            claim_token=None if refresh.state is JobState.SKIPPED else job.claim_token,
+        )
+        return True
+
+    async def redirect_channel(self, job_id: int, channel_id: int) -> bool:
+        job = self.jobs.get(job_id)
+        if job is None or job.state is not JobState.SCHEDULED or job.attempt_count <= 0:
+            return False
+        if job.channel_id == channel_id:
+            return False
+        self.jobs[job_id] = replace(job, channel_id=channel_id)
+        return True
 
 
 class FakeJira:

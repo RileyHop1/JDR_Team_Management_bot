@@ -1,6 +1,6 @@
 # Proposed architecture
 
-**Status:** overall design proposal. Configuration, basic Discord commands, the meeting service, durable reminder jobs, the read-only Jira brief, and the single-process scheduler are implemented. Reminder policy is provisional in [decision 0002](decisions/0002-meeting-reminders.md). Brief policy is provisional in [decision 0003](decisions/0003-jira-morning-brief.md). Recording remains planned. Record provider and library selections in architecture decision records before depending on them.
+**Status:** overall design proposal. Configuration, basic Discord commands, the meeting service, durable reminder jobs, the read-only Jira brief, per-guild settings, and the single-process scheduler are implemented. Reminder policy is provisional in [decision 0002](decisions/0002-meeting-reminders.md). Brief policy is provisional in [decision 0003](decisions/0003-jira-morning-brief.md). Guild settings are provisional in [decision 0004](decisions/0004-guild-configuration.md). Recording remains planned. Record provider and library selections in architecture decision records before depending on them.
 
 ## System shape
 
@@ -37,7 +37,7 @@ Suggested eventual package boundaries are `config`, `domain`, `services`, `adapt
 
 ## Durable records
 
-- Guild configuration: allowed operators, destination channels, time zone, brief schedule, Jira project/filter and status mapping.
+- Guild configuration: destination channels, IANA time zone, and brief local time are stored as nullable columns. Allowed operators and the Jira project, filter, and status mapping stay in the process environment until the team confirms otherwise. See [decision 0004](decisions/0004-guild-configuration.md). Credentials are not stored in the row.
 - Meeting: guild, channels, UTC start, original time zone, reminder offsets, organizer, and lifecycle state.
 - Job: stable identity, due time, state, attempt count, retry time, and delivery receipt when available.
 - Recording session: meeting, authorization/notice metadata, lifecycle state, bounded storage reference, and deletion deadline.
@@ -47,7 +47,7 @@ Use foreign keys and uniqueness constraints for scope and job identities. Decide
 
 ## Scheduling and delivery
 
-Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Reminder recovery is specified in [decision 0002](decisions/0002-meeting-reminders.md) and still needs team confirmation: skip offsets outside the 60-second grace, keep future reminders, and do not resend a reminder whose receipt could not be stored. Morning-brief recovery is specified in [decision 0003](decisions/0003-jira-morning-brief.md) and still needs team confirmation: send a missed brief once on the same local day, skip older weekdays, and do not resend a brief whose receipt could not be stored.
+Store UTC-aware timestamps and calculate daily brief times using the guild's IANA zone. Define and test ambiguous/nonexistent daylight saving times. Reminder recovery is specified in [decision 0002](decisions/0002-meeting-reminders.md) and still needs team confirmation: skip offsets outside the 60-second grace, keep future reminders, and do not resend a reminder whose receipt could not be stored. Morning-brief recovery is specified in [decision 0003](decisions/0003-jira-morning-brief.md) and still needs team confirmation: send a missed brief once on the same local day, skip older weekdays, and do not resend a brief whose receipt could not be stored. Changing the stored brief channel, time, or zone updates future unattempted brief jobs on the next poll. Existing meetings keep the zone and channels stored on the meeting. See [decision 0004](decisions/0004-guild-configuration.md).
 
 Use transactions to claim jobs and finite retries for transient failures. Discord delivery and database updates cannot be atomic: a crash after sending can cause a duplicate. Retain message receipts, reconcile when possible, and document the remaining duplicate window rather than promising exactly-once delivery.
 

@@ -20,8 +20,9 @@ The brief initially reflects current Jira state. Historical changes, blockers, o
 1. **Foundation:** confirm scope and providers; add tooling, CI, configuration, commands, persistence, and authorization.
 2. **Reminders:** durable scheduled notifications are implemented offline. A private-server demonstration and team confirmation of [decision 0002](decisions/0002-meeting-reminders.md) are still required.
 3. **Jira brief:** a read-only adapter and scheduled output are implemented offline under [decision 0003](decisions/0003-jira-morning-brief.md). A test-Jira demonstration and team confirmation are still required.
-4. **Transcription feasibility:** prove supported voice capture, audio processing, consent controls, and provider compatibility.
-5. **Meeting records:** integrate transcription, delivery, deletion, failure recovery, and operational documentation.
+4. **Guild configuration:** operators can store a meetings channel, brief channel, IANA zone, and brief time under [decision 0004](decisions/0004-guild-configuration.md). A test-server `/config` check and team confirmation are still required. Jira credentials stay in the environment.
+5. **Transcription feasibility:** prove supported voice capture, audio processing, consent controls, and provider compatibility.
+6. **Meeting records:** integrate transcription, delivery, deletion, failure recovery, and operational documentation.
 
 Develop reminders and Jira independently of the voice feasibility spike. Do not promise the recording feature until that spike passes.
 

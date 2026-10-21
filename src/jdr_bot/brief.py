@@ -128,6 +128,26 @@ class BriefPlan:
 
 
 @dataclass(frozen=True)
+class BriefRefresh:
+    """A never-attempted scheduled brief rewritten to the current schedule."""
+
+    job_id: int
+    channel_id: int
+    due_at: datetime
+    timezone_name: str
+    state: JobState
+    failure_category: str | None
+
+
+@dataclass(frozen=True)
+class BriefChannelRedirect:
+    """A retry whose channel changed. The due instant stays on the original occurrence."""
+
+    job_id: int
+    channel_id: int
+
+
+@dataclass(frozen=True)
 class ClaimedBrief:
     """Snapshot taken when a worker claims a job, before Jira is called."""
 
@@ -422,6 +442,81 @@ def _gap_due_at(local_date: date, timezone_name: str) -> datetime:
     if midnight is not None:
         return midnight
     return datetime(local_date.year, local_date.month, local_date.day, tzinfo=UTC)
+
+
+def refresh_unattempted_briefs(
+    now: datetime, schedule: BriefSchedule, jobs: Sequence[BriefJobRecord]
+) -> tuple[BriefRefresh, ...]:
+    """Move future never-attempted briefs onto the current channel, zone, and wall time.
+
+    The local date is the job identity and does not change. Past local dates,
+    claimed jobs, and jobs that already have an attempt are left alone so a
+    finished or in-progress brief is not sent again. A spring-forward gap
+    becomes skipped (dst_gap) for that date.
+    """
+    local_today = zone_local_date(as_utc(now), schedule.timezone_name)
+    changes: list[BriefRefresh] = []
+    for job in jobs:
+        if job.state is not JobState.SCHEDULED or job.attempt_count != 0:
+            continue
+        if job.local_date < local_today:
+            continue
+        due = resolve_brief_instant(
+            job.local_date, schedule.timezone_name, schedule.hour, schedule.minute
+        )
+        if due is None:
+            changes.append(
+                BriefRefresh(
+                    job_id=job.id,
+                    channel_id=schedule.channel_id,
+                    due_at=_gap_due_at(job.local_date, schedule.timezone_name),
+                    timezone_name=schedule.timezone_name,
+                    state=JobState.SKIPPED,
+                    failure_category="dst_gap",
+                )
+            )
+            continue
+        if _already_current(job, schedule, due):
+            continue
+        changes.append(
+            BriefRefresh(
+                job_id=job.id,
+                channel_id=schedule.channel_id,
+                due_at=due,
+                timezone_name=schedule.timezone_name,
+                state=JobState.SCHEDULED,
+                failure_category=None,
+            )
+        )
+    return tuple(changes)
+
+
+def redirect_retry_channels(
+    now: datetime, schedule: BriefSchedule, jobs: Sequence[BriefJobRecord]
+) -> tuple[BriefChannelRedirect, ...]:
+    """Point a future retry at the current channel without moving its due instant.
+
+    The retry wait stays in place. A later poll still sends that occurrence
+    once; it does not become a new local date.
+    """
+    local_today = zone_local_date(as_utc(now), schedule.timezone_name)
+    return tuple(
+        BriefChannelRedirect(job_id=job.id, channel_id=schedule.channel_id)
+        for job in jobs
+        if job.state is JobState.SCHEDULED
+        and job.attempt_count > 0
+        and job.local_date >= local_today
+        and job.channel_id != schedule.channel_id
+    )
+
+
+def _already_current(job: BriefJobRecord, schedule: BriefSchedule, due_at: datetime) -> bool:
+    return (
+        job.channel_id == schedule.channel_id
+        and job.timezone_name == schedule.timezone_name
+        and as_utc(job.due_at) == as_utc(due_at)
+        and job.failure_category is None
+    )
 
 
 def _header(project_key: str, local_date: date, timezone_name: str, *, continued: bool) -> str:

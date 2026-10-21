@@ -1,6 +1,6 @@
 # Implementation issues
 
-These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), and [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
+These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8), and [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
 
 | ID | Work item | Branch | Dependencies |
 | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/
 | JDR-002 | Meeting configuration and reminders | `feat/meeting-reminders` | JDR-001 |
 | JDR-003 | Jira morning brief | `feat/jira-morning-brief` | JDR-001; scheduler from JDR-002 |
 | JDR-004 | Meeting capture and transcripts | `feat/meeting-transcripts` | JDR-001; meeting model from JDR-002; voice feasibility |
+| JDR-006 | Persisted guild configuration | `cursor/guild-configuration-5ec9` | JDR-001; consumed by JDR-002 and JDR-003 |
 
 ## JDR-001: Development foundation
 
@@ -60,6 +61,21 @@ Acceptance criteria:
 - Implement explicit lifecycle states, bounded capture, cancellation, disconnect recovery, transcription failures, and cleanup.
 - Deliver long transcripts privately with attachments; never fall back to a public channel.
 - Test with synthetic audio and demonstrate the full path in a private server with consenting participants; verify deletion of local artifacts and document external retention limits.
+
+## JDR-006: Persisted guild configuration
+
+Offline behavior is implemented under the provisional policy in [decision 0004](decisions/0004-guild-configuration.md): nullable guild settings, operator `/config` commands, environment fallback when a field is unset, and future brief jobs that pick up a new channel and time. Team confirmation of that policy and a `/config` check in the test server are still outstanding, so this item is not complete. See [guild configuration](features/guild-configuration.md).
+
+GitHub issue: [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11).
+
+Acceptance criteria:
+
+- Add a reviewed migration extending guild configuration with meetings channel id, brief channel id, IANA time zone, and brief local time (`HH:MM`). Bump `SCHEMA_REVISION` to `0004`.
+- Add operator-only, guild-scoped slash commands to view and update these settings, enforced with `can_manage`. Validate that channels exist in the guild and the bot can view and send there. Reject invalid IANA zones and times with useful messages.
+- Document how `BOT_TIMEZONE`, `MEETINGS_CHANNEL_ID`, and `BRIEF_CHANNEL_ID` relate to stored values. The environment is the fallback when no row or value is stored.
+- Never store Jira credentials in configuration rows.
+- Test permission denial, invalid channels and zones, persistence round-trips against PostgreSQL, and upgrade/downgrade of migration `0004`.
+- Update `docs/DEVELOPMENT.md` and `.env.example` with placeholders only.
 
 ## Shared completion rules
 

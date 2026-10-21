@@ -13,17 +13,17 @@ Foundation dependencies are declared in `pyproject.toml` and pinned in `uv.lock`
 
 ## Proposed configuration contract
 
-The foundation reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_OPERATOR_ROLE_ID`, `DATABASE_URL`, and `BOT_TIMEZONE`. Other names below remain proposed for later features. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
+The foundation reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_OPERATOR_ROLE_ID`, `DATABASE_URL`, and `BOT_TIMEZONE`. `MEETINGS_CHANNEL_ID` is an optional default for the stored meetings channel. The morning-brief names are read when that feature is enabled. `TRANSCRIPTION_API_KEY` remains proposed. Store secret values in environment settings or an approved secret manager; never place them in this document or committed examples.
 
 | Name | Purpose | Sensitive? |
 | --- | --- | --- |
 | `DISCORD_BOT_TOKEN` | Authenticate the bot. | Yes |
 | `DISCORD_OPERATOR_ROLE_ID` | Role required for management commands, including `/status`. | No |
 | `DISCORD_GUILD_ID` | Restrict initial command registration and operation to the test/team server. | No |
-| `MEETINGS_CHANNEL_ID` | Default private transcript destination. | No |
-| `BRIEF_CHANNEL_ID` | Morning brief destination. | No |
-| `BOT_TIMEZONE` | IANA time zone for user-facing schedules. | No |
-| `BRIEF_TIME` | Local daily brief time; format must be specified by implementation. | No |
+| `MEETINGS_CHANNEL_ID` | Optional meetings-channel default when `/config` has not stored one. | No |
+| `BRIEF_CHANNEL_ID` | Morning brief destination, unless a brief channel is stored. | No |
+| `BOT_TIMEZONE` | IANA time zone used when the guild has not stored one. | No |
+| `BRIEF_TIME` | Local `HH:MM` brief time, unless a brief time is stored. | No |
 | `DATABASE_URL` | PostgreSQL connection string. | Usually contains credentials |
 | `JIRA_BASE_URL` | Approved Jira deployment URL. | No |
 | `JIRA_PROJECT_KEY` | Initial project scope. | No |
@@ -42,9 +42,9 @@ Derive concrete host allowlists from chosen services; do not enable unrestricted
 ## Decisions to resolve before the relevant feature
 
 1. Are all meetings held in Discord voice channels? Third-party meeting platforms need separate authorization and adapters.
-2. What time zone, morning time, weekend policy, reminder offsets, and missed-job behavior should the team use? Reminder offsets, the `BOT_TIMEZONE` default, and missed-reminder behavior are provisionally recorded in [decision 0002](decisions/0002-meeting-reminders.md). The brief's explicit `BRIEF_TIME`, weekday-only schedule, and same-day recovery are provisionally recorded in [decision 0003](decisions/0003-jira-morning-brief.md).
+2. What time zone, morning time, weekend policy, reminder offsets, and missed-job behavior should the team use? Reminder offsets, the `BOT_TIMEZONE` default, and missed-reminder behavior are provisionally recorded in [decision 0002](decisions/0002-meeting-reminders.md). The brief's explicit `BRIEF_TIME`, weekday-only schedule, and same-day recovery are provisionally recorded in [decision 0003](decisions/0003-jira-morning-brief.md). Operators can store a guild zone, channels, and brief time over those environment defaults; see [decision 0004](decisions/0004-guild-configuration.md).
 3. Which Jira deployment, project/filter, and exact statuses mean “being worked on”? Should the brief include all project issues or just the team's assigned work? Decision 0003 provisionally uses Jira Cloud, an explicit status list or `JIRA_JQL`, and every matching issue in the project (no assignee filter). Confirm that before treating it as final.
-4. Who may configure schedules, start recording, stop recording, access transcripts, and request deletion? How will notice and consent work for late arrivals? Meeting create, list, view, update, and cancel are provisionally limited to `DISCORD_OPERATOR_ROLE_ID` ([decision 0002](decisions/0002-meeting-reminders.md)). Recording and transcript access remain open.
+4. Who may configure schedules, start recording, stop recording, access transcripts, and request deletion? How will notice and consent work for late arrivals? Meeting create, list, view, update, and cancel are provisionally limited to `DISCORD_OPERATOR_ROLE_ID` ([decision 0002](decisions/0002-meeting-reminders.md)). `/config view` and `/config set` use that same role ([decision 0004](decisions/0004-guild-configuration.md)). Recording and transcript access remain open.
 5. What recording/transcript retention, provider data policy, language support, budget, and maximum meeting duration are acceptable?
 6. Where will the bot run continuously, and does that environment support Discord voice networking?
 

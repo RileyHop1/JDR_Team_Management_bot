@@ -2,7 +2,7 @@
 
 A planned Discord assistant for a senior computer engineering project. It will help the team prepare for meetings, retain meeting records, and stay aware of work tracked in Jira.
 
-**Status:** foundation, meeting reminders, and the Jira morning brief are implemented offline. The bot registers guild-scoped `/ping`, operator-only `/status`, and operator-only `/meeting` commands. Reminders and brief jobs are stored in PostgreSQL and restored after restart. The reminder policy in [decision 0002](docs/decisions/0002-meeting-reminders.md) and the brief policy in [decision 0003](docs/decisions/0003-jira-morning-brief.md) are provisional and need team confirmation. Live Discord validation, including a reminder and a Jira brief in the test server, is pending. Transcription is not implemented.
+**Status:** foundation, meeting reminders, the Jira morning brief, and per-guild configuration are implemented offline. The bot registers guild-scoped `/ping`, operator-only `/status`, operator-only `/meeting`, and operator-only `/config` commands. Reminders and brief jobs are stored in PostgreSQL and restored after restart. Guild time zone, channels, and brief time can be stored per guild; Jira credentials stay in the environment. The reminder policy in [decision 0002](docs/decisions/0002-meeting-reminders.md), the brief policy in [decision 0003](docs/decisions/0003-jira-morning-brief.md), and the guild-configuration policy in [decision 0004](docs/decisions/0004-guild-configuration.md) are provisional and need team confirmation. Live Discord validation, including a reminder, a Jira brief, and `/config` in the test server, is pending. Transcription is not implemented.
 
 ## Intended capabilities
 
@@ -25,7 +25,7 @@ The initial target is meetings held in a Discord voice channel. Supporting Zoom,
 
 ## Development
 
-Python 3.12.14, uv 0.12.23, and PostgreSQL 16 are the initial baseline. See [development instructions](docs/DEVELOPMENT.md) for installation, migrations, configuration, test commands, and the Discord smoke checks. See the [foundation decision](docs/decisions/0001-development-foundation.md), the provisional [meeting-reminder decision](docs/decisions/0002-meeting-reminders.md), and the provisional [Jira brief decision](docs/decisions/0003-jira-morning-brief.md).
+Python 3.12.14, uv 0.12.23, and PostgreSQL 16 are the initial baseline. See [development instructions](docs/DEVELOPMENT.md) for installation, migrations, configuration, test commands, and the Discord smoke checks. See the [foundation decision](docs/decisions/0001-development-foundation.md), the provisional [meeting-reminder decision](docs/decisions/0002-meeting-reminders.md), the provisional [Jira brief decision](docs/decisions/0003-jira-morning-brief.md), and the provisional [guild-configuration decision](docs/decisions/0004-guild-configuration.md).
 
 ```sh
 uv sync --locked

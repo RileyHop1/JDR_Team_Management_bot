@@ -42,7 +42,7 @@ from jdr_bot.domain import (
 )
 from jdr_bot.ports import MeetingConflict, MeetingNotEditable, MeetingNotFound, ReminderInProgress
 
-SCHEMA_REVISION = "0003"
+SCHEMA_REVISION = "0004"
 
 _ACTIVE_JOBS = "state IN ('scheduled', 'claimed')"
 _OPEN_OCCURRENCES = (
@@ -55,11 +55,36 @@ class Base(DeclarativeBase):
 
 
 class GuildConfiguration(Base):
-    """Guild identity reserved for persistent scheduling configuration."""
+    """Non-secret per-guild settings. Credentials are never stored in this table.
+
+    Null columns mean "use the environment default". See docs/decisions/0004-guild-configuration.md.
+    """
 
     __tablename__ = "guild_configurations"
+    __table_args__ = (
+        CheckConstraint(
+            "meetings_channel_id IS NULL OR meetings_channel_id > 0",
+            name="ck_guild_meetings_channel",
+        ),
+        CheckConstraint(
+            "brief_channel_id IS NULL OR brief_channel_id > 0",
+            name="ck_guild_brief_channel",
+        ),
+        CheckConstraint(
+            "timezone IS NULL OR char_length(timezone) BETWEEN 1 AND 64",
+            name="ck_guild_timezone",
+        ),
+        CheckConstraint(
+            "brief_time IS NULL OR brief_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'",
+            name="ck_guild_brief_time",
+        ),
+    )
 
     guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    meetings_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    brief_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    timezone_name: Mapped[str | None] = mapped_column("timezone", String(64), nullable=True)
+    brief_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jdr_bot.brief import BriefJobRecord, ClaimedBrief, NewBriefJob
+from jdr_bot.brief import BriefJobRecord, BriefRefresh, ClaimedBrief, NewBriefJob
 from jdr_bot.domain import JobState, as_utc
 from jdr_bot.storage import Base, GuildConfiguration
 
@@ -260,6 +260,61 @@ class SqlBriefStore:
                 job.state = JobState.SCHEDULED.value
                 job.claimed_at = None
                 job.retry_at = as_utc(retry_at) if retry_at is not None else None
+
+    async def apply_refresh(self, refresh: BriefRefresh) -> bool:
+        async with self._sessions() as session, session.begin():
+            if refresh.state is JobState.SKIPPED:
+                updated_id = await session.scalar(
+                    update(BriefJobRow)
+                    .where(
+                        BriefJobRow.id == refresh.job_id,
+                        BriefJobRow.state == JobState.SCHEDULED.value,
+                        BriefJobRow.attempt_count == 0,
+                    )
+                    .values(
+                        channel_id=refresh.channel_id,
+                        timezone_name=refresh.timezone_name,
+                        due_at=as_utc(refresh.due_at),
+                        state=JobState.SKIPPED.value,
+                        failure_category=(refresh.failure_category or "dst_gap")[:64],
+                        retry_at=None,
+                        claim_token=None,
+                    )
+                    .returning(BriefJobRow.id)
+                )
+            elif refresh.state is JobState.SCHEDULED:
+                updated_id = await session.scalar(
+                    update(BriefJobRow)
+                    .where(
+                        BriefJobRow.id == refresh.job_id,
+                        BriefJobRow.state == JobState.SCHEDULED.value,
+                        BriefJobRow.attempt_count == 0,
+                    )
+                    .values(
+                        channel_id=refresh.channel_id,
+                        timezone_name=refresh.timezone_name,
+                        due_at=as_utc(refresh.due_at),
+                        failure_category=None,
+                    )
+                    .returning(BriefJobRow.id)
+                )
+            else:
+                return False
+        return updated_id is not None
+
+    async def redirect_channel(self, job_id: int, channel_id: int) -> bool:
+        async with self._sessions() as session, session.begin():
+            updated_id = await session.scalar(
+                update(BriefJobRow)
+                .where(
+                    BriefJobRow.id == job_id,
+                    BriefJobRow.state == JobState.SCHEDULED.value,
+                    BriefJobRow.attempt_count > 0,
+                )
+                .values(channel_id=channel_id)
+                .returning(BriefJobRow.id)
+            )
+        return updated_id is not None
 
 
 def _record(row: BriefJobRow) -> BriefJobRecord:

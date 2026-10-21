@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from jdr_bot.config import Settings
+from jdr_bot.guild_config import StoredGuildConfig
 
 
 def test_invalid_settings_hide_secret_values(settings):
@@ -86,3 +87,73 @@ def test_brief_settings_hide_token_and_build_a_schedule(settings):
     assert schedule.jql == 'project = "JDR" AND summary ~ "hidden-query-text"'
     assert schedule.status_names is None
     assert not hasattr(schedule, "api_token")
+    assert "synthetic-jira-token" not in repr(schedule)
+
+    stored = StoredGuildConfig(
+        guild_id=configured.discord_guild_id,
+        meetings_channel_id=15,
+        brief_channel_id=77,
+        timezone_name="Europe/Paris",
+        brief_time="11:11",
+    )
+    overridden = configured.brief_schedule(stored)
+    assert overridden is not None
+    assert overridden.channel_id == 77
+    assert overridden.hour == 11
+    assert overridden.minute == 11
+    assert overridden.timezone_name == "Europe/Paris"
+    assert overridden.jql == schedule.jql
+    assert "synthetic-jira-token" not in repr(overridden)
+
+    partial = StoredGuildConfig(
+        guild_id=configured.discord_guild_id,
+        meetings_channel_id=None,
+        brief_channel_id=None,
+        timezone_name=None,
+        brief_time="08:15",
+    )
+    mixed = configured.brief_schedule(partial)
+    assert mixed is not None
+    assert mixed.channel_id == 10
+    assert mixed.hour == 8
+    assert mixed.minute == 15
+    assert mixed.timezone_name == configured.bot_timezone
+
+    other_guild = StoredGuildConfig(
+        guild_id=999,
+        meetings_channel_id=5,
+        brief_channel_id=77,
+        timezone_name="Europe/Paris",
+        brief_time="11:11",
+    )
+    ignored = configured.brief_schedule(other_guild)
+    assert ignored is not None
+    assert ignored.channel_id == 10
+    assert ignored.hour == 9
+    assert ignored.timezone_name == configured.bot_timezone
+
+    invalid = StoredGuildConfig(
+        guild_id=configured.discord_guild_id,
+        meetings_channel_id=None,
+        brief_channel_id=77,
+        timezone_name="synthetic-secret-zone",
+        brief_time="11:11",
+    )
+    with pytest.raises(ValueError) as rejected:
+        configured.brief_schedule(invalid)
+    assert "synthetic-secret-zone" not in str(rejected.value)
+    assert "synthetic-jira-token" not in str(rejected.value)
+
+
+def test_meetings_channel_does_not_enable_the_brief(settings):
+    values = settings.model_dump()
+    values["meetings_channel_id"] = ""
+    assert Settings(_env_file=None, **values).meetings_channel_id is None
+    values["meetings_channel_id"] = 10
+    configured = Settings(_env_file=None, **values)
+    assert configured.meetings_channel_id == 10
+    assert configured.brief_schedule() is None
+    values["meetings_channel_id"] = 0
+    with pytest.raises(ValidationError) as error:
+        Settings(_env_file=None, **values)
+    assert "meetings_channel_id" in str(error.value)

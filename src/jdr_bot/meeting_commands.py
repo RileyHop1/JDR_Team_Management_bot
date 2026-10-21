@@ -10,6 +10,7 @@ from discord import app_commands
 from jdr_bot.authorization import can_manage
 from jdr_bot.config import Settings
 from jdr_bot.domain import MeetingError
+from jdr_bot.guild_config import GuildConfigService
 from jdr_bot.meeting_service import MeetingService
 from jdr_bot.presentation import format_meeting, format_meeting_list
 
@@ -21,6 +22,7 @@ _COMMAND_FAILED = "The meeting command could not be completed. Contact a maintai
 class MeetingCommandContext(Protocol):
     settings: Settings
     meetings: MeetingService
+    guild_config: GuildConfigService
 
 
 class MeetingCommands(app_commands.Group):
@@ -75,7 +77,7 @@ class MeetingCommands(app_commands.Group):
         text_channel="Text channel that receives reminders",
         voice_channel="Voice channel where the meeting is held",
         offsets="Comma-separated minutes before start, such as 1440,60,15",
-        timezone="IANA time zone. Defaults to the configured bot time zone",
+        timezone="IANA time zone. Defaults to the stored guild zone, then the bot time zone",
     )
     async def create_meeting(
         self,
@@ -89,9 +91,12 @@ class MeetingCommands(app_commands.Group):
     ) -> None:
         if not await self._begin(interaction):
             return
-        zone = timezone.strip() or self._context.settings.bot_timezone
 
         async def work() -> str:
+            # An explicit zone skips the store. An omitted zone uses the stored guild zone.
+            zone = timezone.strip() or await self._context.guild_config.timezone_name(
+                self._context.settings.discord_guild_id
+            )
             meeting = await self._context.meetings.create(
                 guild_id=self._context.settings.discord_guild_id,
                 organizer_id=interaction.user.id,

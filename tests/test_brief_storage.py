@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
+from jdr_bot.brief import BriefRefresh, NewBriefJob
 from jdr_bot.brief_scheduler import BriefScheduler
 from jdr_bot.brief_service import BriefService
 from jdr_bot.brief_storage import SqlBriefStore
@@ -288,6 +289,124 @@ async def test_postgres_cancel_during_read_releases_the_claim():
         ).run_once()
         assert len(delivery.sent) == 1
         assert "unassigned" in delivery.sent[0][0]
+    finally:
+        await clear_rows(engine)
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_postgres_refresh_leaves_claimed_rows_and_retry_due_instants():
+    url, engine = await disposable_engine()
+    del url
+    try:
+        store = SqlBriefStore(engine)
+        claimed_due = datetime(2026, 6, 1, 9, tzinfo=UTC_TZ)
+        retry_due = datetime(2026, 6, 2, 9, tzinfo=UTC_TZ)
+        retry_wait = datetime(2026, 6, 2, 9, 5, tzinfo=UTC_TZ)
+        fresh_due = datetime(2026, 6, 3, 9, tzinfo=UTC_TZ)
+        claimed_id = await store.insert_job(
+            NewBriefJob(
+                guild_id=123,
+                channel_id=10,
+                local_date=date(2026, 6, 1),
+                due_at=claimed_due,
+                timezone_name="UTC",
+                state=JobState.SCHEDULED,
+                failure_category=None,
+            )
+        )
+        retry_id = await store.insert_job(
+            NewBriefJob(
+                guild_id=123,
+                channel_id=10,
+                local_date=date(2026, 6, 2),
+                due_at=retry_due,
+                timezone_name="UTC",
+                state=JobState.SCHEDULED,
+                failure_category=None,
+            )
+        )
+        fresh_id = await store.insert_job(
+            NewBriefJob(
+                guild_id=123,
+                channel_id=10,
+                local_date=date(2026, 6, 3),
+                due_at=fresh_due,
+                timezone_name="UTC",
+                state=JobState.SCHEDULED,
+                failure_category=None,
+            )
+        )
+        assert claimed_id is not None
+        assert retry_id is not None
+        assert fresh_id is not None
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "UPDATE brief_jobs SET state = 'claimed', attempt_count = 1, "
+                    "claim_token = 'claim-token' WHERE id = :job_id"
+                ),
+                {"job_id": claimed_id},
+            )
+            await connection.execute(
+                text(
+                    "UPDATE brief_jobs SET attempt_count = 1, retry_at = :retry_at, "
+                    "failure_category = 'rate_limited' WHERE id = :job_id"
+                ),
+                {"job_id": retry_id, "retry_at": retry_wait},
+            )
+        claimed_refresh = BriefRefresh(
+            job_id=claimed_id,
+            channel_id=20,
+            due_at=datetime(2026, 6, 1, 8, tzinfo=UTC_TZ),
+            timezone_name="America/Los_Angeles",
+            state=JobState.SCHEDULED,
+            failure_category=None,
+        )
+        retry_refresh = BriefRefresh(
+            job_id=retry_id,
+            channel_id=20,
+            due_at=datetime(2026, 6, 2, 11, tzinfo=UTC_TZ),
+            timezone_name="America/Los_Angeles",
+            state=JobState.SCHEDULED,
+            failure_category=None,
+        )
+        fresh_refresh = BriefRefresh(
+            job_id=fresh_id,
+            channel_id=22,
+            due_at=datetime(2026, 6, 3, 10, 30, tzinfo=UTC_TZ),
+            timezone_name="America/Los_Angeles",
+            state=JobState.SCHEDULED,
+            failure_category=None,
+        )
+        assert await store.apply_refresh(claimed_refresh) is False
+        assert await store.redirect_channel(claimed_id, 20) is False
+        assert await store.apply_refresh(retry_refresh) is False
+        assert await store.redirect_channel(retry_id, 21) is True
+        assert await store.apply_refresh(fresh_refresh) is True
+        rows = {row.id: row for row in await store.list_relevant(123, date(2026, 6, 1))}
+        claimed = rows[claimed_id]
+        assert claimed.state is JobState.CLAIMED
+        assert claimed.channel_id == 10
+        assert claimed.due_at == claimed_due
+        assert claimed.attempt_count == 1
+        assert claimed.claim_token == "claim-token"
+        assert claimed.timezone_name == "UTC"
+        retry = rows[retry_id]
+        assert retry.state is JobState.SCHEDULED
+        assert retry.channel_id == 21
+        assert retry.due_at == retry_due
+        assert retry.retry_at == retry_wait
+        assert retry.attempt_count == 1
+        assert retry.failure_category == "rate_limited"
+        assert retry.timezone_name == "UTC"
+        fresh = rows[fresh_id]
+        assert fresh.state is JobState.SCHEDULED
+        assert fresh.channel_id == 22
+        assert fresh.due_at == datetime(2026, 6, 3, 10, 30, tzinfo=UTC_TZ)
+        assert fresh.timezone_name == "America/Los_Angeles"
+        assert fresh.attempt_count == 0
+        assert fresh.retry_at is None
     finally:
         await clear_rows(engine)
         await engine.dispose()
