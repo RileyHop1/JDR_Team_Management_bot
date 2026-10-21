@@ -3,6 +3,7 @@
 import logging
 from types import SimpleNamespace
 
+import discord
 import pytest
 
 from jdr_bot.config import Settings
@@ -101,6 +102,31 @@ async def test_config_commands_require_the_operator_role(settings):
     outsider.response.send_message.assert_awaited_once_with(
         "Operator role required.", ephemeral=True
     )
+
+
+async def test_administrator_without_the_operator_role_is_rejected(settings):
+    class Unused:
+        async def get(self, guild_id: int) -> StoredGuildConfig | None:
+            raise AssertionError(guild_id)
+
+        async def apply(self, guild_id: int, change: GuildConfigChange) -> StoredGuildConfig:
+            raise AssertionError((guild_id, change))
+
+    guild_config = GuildConfigService(Unused(), StaticChannels({}), settings.guild_defaults())
+    group = commands_for(settings, guild_config)
+    request = interaction()
+    request.user.guild_permissions = discord.Permissions(administrator=True)
+    assert request.user.guild_permissions.administrator is True
+    await group.view_config(request)
+    request.response.send_message.assert_awaited_once_with(
+        "Operator role required.", ephemeral=True
+    )
+    request.response.defer.assert_not_awaited()
+    denied = interaction(roles=[999])
+    denied.user.guild_permissions = discord.Permissions(administrator=True)
+    await group.set_config(denied, timezone="UTC")
+    denied.response.send_message.assert_awaited_once_with("Operator role required.", ephemeral=True)
+    denied.response.defer.assert_not_awaited()
 
 
 async def test_operator_can_set_view_and_clear(settings, caplog: pytest.LogCaptureFixture):

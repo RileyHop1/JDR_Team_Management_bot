@@ -77,7 +77,7 @@ class MeetingCommands(app_commands.Group):
         text_channel="Text channel that receives reminders",
         voice_channel="Voice channel where the meeting is held",
         offsets="Comma-separated minutes before start, such as 1440,60,15",
-        timezone="IANA time zone. Defaults to the configured bot time zone",
+        timezone="IANA time zone. Defaults to the stored guild zone, then the bot time zone",
     )
     async def create_meeting(
         self,
@@ -91,12 +91,12 @@ class MeetingCommands(app_commands.Group):
     ) -> None:
         if not await self._begin(interaction):
             return
-        # Stored guild zone when the command omits one. Existing meetings keep theirs.
-        zone = timezone.strip() or await self._context.guild_config.timezone_name(
-            self._context.settings.discord_guild_id
-        )
 
         async def work() -> str:
+            # An explicit zone skips the store. An omitted zone uses the stored guild zone.
+            zone = timezone.strip() or await self._context.guild_config.timezone_name(
+                self._context.settings.discord_guild_id
+            )
             meeting = await self._context.meetings.create(
                 guild_id=self._context.settings.discord_guild_id,
                 organizer_id=interaction.user.id,

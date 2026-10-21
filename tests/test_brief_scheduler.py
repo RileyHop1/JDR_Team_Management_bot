@@ -493,6 +493,27 @@ async def test_future_brief_picks_up_a_new_channel_and_time():
     assert tuesday.state is JobState.SCHEDULED
 
 
+async def test_moving_todays_brief_earlier_sends_that_local_day():
+    clock = FakeClock(datetime(2026, 6, 1, 9, 30, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    source = MutableSchedule(utc_schedule(hour=10))
+    running = sourced(store, clock, FakeJira(pages=[page()]), delivery, source)
+    await running.run_once()
+    waiting = store.only()
+    assert waiting.local_date == date(2026, 6, 1)
+    assert waiting.due_at == datetime(2026, 6, 1, 10, tzinfo=UTC_TZ)
+    assert waiting.state is JobState.SCHEDULED
+    assert delivery.sent == []
+    source.schedule = utc_schedule(hour=9)
+    await running.run_once()
+    assert len(delivery.sent) == 1
+    delivered = next(job for job in store.jobs.values() if job.local_date == date(2026, 6, 1))
+    assert delivered.state is JobState.DELIVERED
+    assert delivered.due_at == datetime(2026, 6, 1, 9, tzinfo=UTC_TZ)
+    assert delivered.channel_id == 10
+
+
 async def test_retry_moves_channel_and_keeps_the_due_instant():
     clock = FakeClock(datetime(2026, 6, 1, 9, 1, tzinfo=UTC_TZ))
     store = MemoryBriefStore()
@@ -542,6 +563,37 @@ async def test_gap_after_a_time_change_is_not_sent():
     assert states[date(2026, 3, 8)] == (JobState.SKIPPED, "dst_gap")
     assert states[date(2026, 3, 9)][0] is JobState.SCHEDULED
     assert delivery.sent == []
+
+
+async def test_dst_gap_stays_skipped_after_the_time_is_corrected():
+    clock = FakeClock(datetime(2026, 3, 8, 12, tzinfo=UTC_TZ))
+    store = MemoryBriefStore()
+    delivery = FakeBriefDelivery()
+    source = MutableSchedule(
+        utc_schedule(timezone_name="America/Los_Angeles", hour=9, weekdays_only=False)
+    )
+    running = sourced(store, clock, FakeJira(pages=[page()]), delivery, source)
+    await running.run_once()
+    assert store.only().state is JobState.SCHEDULED
+    source.schedule = utc_schedule(
+        timezone_name="America/Los_Angeles", hour=2, minute=30, weekdays_only=False
+    )
+    await running.run_once()
+    gap = next(job for job in store.jobs.values() if job.local_date == date(2026, 3, 8))
+    assert gap.state is JobState.SKIPPED
+    assert gap.failure_category == "dst_gap"
+    source.schedule = utc_schedule(timezone_name="America/Los_Angeles", hour=9, weekdays_only=False)
+    # 09:00 PDT on the gap date is 16:00 UTC. A reopened row would be due now.
+    clock.set(datetime(2026, 3, 8, 16, 1, tzinfo=UTC_TZ))
+    await running.run_once()
+    assert delivery.sent == []
+    gap = next(job for job in store.jobs.values() if job.local_date == date(2026, 3, 8))
+    assert gap.state is JobState.SKIPPED
+    assert gap.failure_category == "dst_gap"
+    later = [job for job in store.jobs.values() if job.local_date == date(2026, 3, 8)]
+    assert len(later) == 1
+    nxt = next(job for job in store.jobs.values() if job.local_date == date(2026, 3, 9))
+    assert nxt.state is JobState.SCHEDULED
 
 
 async def test_unavailable_schedule_leaves_rows_unchanged(caplog: pytest.LogCaptureFixture):

@@ -148,6 +148,48 @@ async def test_blank_timezone_uses_configured_zone(settings):
     assert saved[0].starts_at == datetime(2026, 3, 8, 10, 30, tzinfo=UTC)
 
 
+async def test_stored_zone_lookup_failure_uses_the_safe_command_error(settings, caplog):
+    class BrokenStore:
+        async def get(self, guild_id: int):
+            raise RuntimeError("synthetic-secret")
+
+        async def apply(self, guild_id: int, change: GuildConfigChange):
+            raise AssertionError((guild_id, change))
+
+    service = GuildConfigService(BrokenStore(), team_channels(), settings.guild_defaults())
+    group, _, store = commands_for(settings, guild_config=service)
+    request = interaction(roles=[456])
+    await group.create_meeting(
+        request,
+        title="Design review",
+        start=START,
+        text_channel=channel(10),
+        voice_channel=channel(11),
+        offsets="60",
+        timezone="",
+    )
+    text = request.followup.send.await_args.args[0]
+    assert text == "The meeting command could not be completed. Contact a maintainer."
+    assert "synthetic-secret" not in text
+    assert "synthetic-secret" not in caplog.text
+    assert "meeting_command_failed" in caplog.text
+    assert await store.list_meetings(123, None, 10) == []
+
+    explicit = interaction(roles=[456])
+    await group.create_meeting(
+        explicit,
+        title="Design review",
+        start=START,
+        text_channel=channel(10),
+        voice_channel=channel(11),
+        offsets="60",
+        timezone="UTC",
+    )
+    saved = await store.list_meetings(123, None, 10)
+    assert saved[0].timezone_name == "UTC"
+    assert "Design review" in explicit.followup.send.await_args.args[0]
+
+
 async def test_unexpected_storage_error_is_hidden(settings, caplog, monkeypatch):
     group, meetings, _ = commands_for(settings)
 

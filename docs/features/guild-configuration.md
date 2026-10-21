@@ -36,7 +36,7 @@ A stored value wins over the environment until it is cleared. Changing the envir
 
 The morning brief reads the stored channel, time, and zone through `Settings.brief_schedule()` on each poll. The Jira token and email are not read from the row. Future brief jobs that have not been attempted pick up a new channel, zone, and time on the next poll, for the same local date. A retry moves to the new channel and keeps its due instant. Delivered, skipped, failed, unreconciled, and claimed rows are not sent again. Moving today's brief earlier can post it later the same local day. Moving it later waits. A time that does not exist because clocks spring forward is `skipped (dst_gap)` and is not reopened by a later edit. Older local dates are not backfilled.
 
-If the stored zone or time cannot be validated, that poll does not send a brief. Reminders continue. The log says `brief_schedule_invalid` and does not include the value.
+If the stored zone or time cannot be validated, that poll does not plan, send, or unreconcile a brief. Reminders continue. The log says `brief_schedule_invalid` and does not include the value, then `brief_schedule_unavailable` when the scheduler loses a usable schedule. A failed settings read logs `brief_schedule_lookup_failed` with the exception type only, and the same `brief_schedule_unavailable` line. That poll also skips plan, send, and unreconcile.
 
 ## Operation
 
@@ -46,7 +46,7 @@ Logs for a successful update contain the guild id and the field names (`guild_co
 
 ## Troubleshooting
 
-- `Operator role required.`: the member is outside the configured guild or does not hold `DISCORD_OPERATOR_ROLE_ID`.
+- `Operator role required.`: the member is outside the configured guild or does not hold `DISCORD_OPERATOR_ROLE_ID`. Administrator is not sufficient.
 - `Provide at least one setting to change.`: `/config set` was sent with every option omitted.
 - `Choose either a new value or clear for each setting.`: the same field was both set and cleared.
 - `Use an IANA time zone such as America/Los_Angeles.`: the zone is empty, unknown, or longer than 64 characters.
@@ -55,11 +55,13 @@ Logs for a successful update contain the guild id and the field names (`guild_co
 - `The bot cannot view that channel.`: Discord refused the channel lookup.
 - `Could not verify the channel. Try again shortly.`: the channel lookup failed for another reason.
 - `The config command could not be completed.`: an unexpected failure. The log line `config_command_failed` contains the command name and exception type only.
-- `brief_schedule_invalid`: a stored zone or time could not be used. That poll does not post a brief.
+- `brief_schedule_invalid`: a stored zone or time could not be used. The value is not logged.
+- `brief_schedule_lookup_failed`: the stored settings could not be read. The log contains the exception type only.
+- `brief_schedule_unavailable`: the scheduler has no usable brief schedule. That poll does not plan, send, or unreconcile brief rows. Reminders still run.
 - `skipped (dst_gap)`: the brief's local time did not exist on that date. Editing the time does not send that date later.
 
 ## Verification
 
-Offline tests cover operator denial, invalid zones, times, and channels, a channel the bot cannot post in, a channel in another guild, environment fallback, clearing a stored zone, persistence of the other fields, a meeting insert that does not wipe settings, upgrade and downgrade of migration `0004`, and brief jobs that pick up a new channel and time without resending a delivered day. PostgreSQL tests use a disposable database whose name ends in `_test`.
+Offline tests cover operator denial, including an administrator who does not hold the operator role, invalid zones, times, and channels, a channel the bot cannot post in, a channel in another guild, environment fallback, clearing a stored zone, persistence of the other fields, a meeting insert that does not wipe settings, a stored-zone lookup failure on `/meeting create`, upgrade and downgrade of migration `0004`, and brief jobs that pick up a new channel and time without resending a delivered day. Moving today's brief earlier can send that same local day. A `dst_gap` date stays skipped after the time is corrected. PostgreSQL tests use a disposable database whose name ends in `_test`, including `apply_refresh` and `redirect_channel`.
 
 The live test-server check in [development instructions](../DEVELOPMENT.md) has not been run.

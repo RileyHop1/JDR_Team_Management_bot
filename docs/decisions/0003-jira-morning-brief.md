@@ -25,7 +25,7 @@ A missing or null `assignee` is rendered as `unassigned`. An assignee object wit
 
 ## Schedule
 
-`BRIEF_TIME` is required when the brief is on. It is `HH:MM` in 24-hour local time. The zone is `BOT_TIMEZONE`. There is no implicit clock time in code. `.env.example` shows `09:00` as the provisional morning to confirm.
+`BRIEF_TIME` is required when the brief is on. It is `HH:MM` in 24-hour local time. The zone is the stored guild zone from [decision 0004](0004-guild-configuration.md) when that column is set, and `BOT_TIMEZONE` when it is not. A stored brief time replaces `BRIEF_TIME` the same way. There is no implicit clock time in code. `.env.example` shows `09:00` as the provisional morning to confirm.
 
 The brief runs Monday through Friday in that zone. Saturday and Sunday are not posted. A missed weekday is not backfilled on a later day.
 
