@@ -18,7 +18,7 @@ async def test_connection_failure_disposes_pool(settings, monkeypatch):
     bot.close = AsyncMock()
     monkeypatch.setattr("jdr_bot.__main__.create_engine", lambda _: engine)
     monkeypatch.setattr("jdr_bot.__main__.TeamBot", lambda *_: bot)
-    with pytest.raises(RuntimeError, match="connection failed"):
+    with pytest.raises(RuntimeError, match="synthetic connection failure"):
         await run(settings)
     bot.close.assert_awaited_once()
     engine.dispose.assert_awaited_once()

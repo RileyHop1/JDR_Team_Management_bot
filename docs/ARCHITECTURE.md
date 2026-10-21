@@ -59,6 +59,6 @@ Delete temporary audio after successful processing or cancellation, with bounded
 
 ## Operations and testing
 
-Validate configuration before connecting. Use health checks for database connectivity and worker progress, plus structured logs for job outcomes without sensitive content. On shutdown, stop accepting recording sessions, release voice connections, persist recoverable job state, close clients, and clean temporary files.
+Validate configuration before connecting. Startup failures log a fixed category and a fixed hint, not provider errors or secrets. See [decision 0005](decisions/0005-startup-failures.md). Use health checks for database connectivity and worker progress, plus structured logs for job outcomes without sensitive content. On shutdown, stop accepting recording sessions, release voice connections, persist recoverable job state, close clients, and clean temporary files.
 
 Unit tests use fake clocks and fake adapters. Integration tests verify PostgreSQL constraints and adapter response handling. Controlled live smoke tests separately verify reminders, a read-only Jira query and brief, and synthetic-audio capture/transcription in a private server. CI must not depend on live Discord meetings or production credentials.

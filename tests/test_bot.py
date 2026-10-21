@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from jdr_bot.authorization import can_manage
 from jdr_bot.bot import TeamBot
+from jdr_bot.startup import DatabaseUnreachable
 
 
 @pytest.mark.parametrize(
@@ -92,6 +94,30 @@ async def test_operator_status_handles_database_result(settings, monkeypatch, fa
     message = "Database unavailable; contact a maintainer." if fails else "Database ready."
     request.followup.send.assert_awaited_once_with(message, ephemeral=True)
     assert "sensitive-password" not in caplog.text
+
+
+async def test_status_logs_database_category_without_driver_text(settings, monkeypatch, caplog):
+    secret = "synthetic-db-password"
+
+    async def fail(_engine: object) -> None:
+        raise DatabaseUnreachable() from OperationalError(
+            "SELECT version_num",
+            {},
+            Exception(f"password={secret} token=synthetic-discord-token jira=synthetic-jira-token"),
+        )
+
+    monkeypatch.setattr("jdr_bot.bot.check_database", fail)
+    bot = TeamBot(settings, MagicMock())
+    request = interaction(roles=[456])
+    await bot.operator_status(request)
+    request.followup.send.assert_awaited_once_with(
+        "Database unavailable; contact a maintainer.", ephemeral=True
+    )
+    assert "database_readiness_failed category=database_unreachable" in caplog.text
+    assert secret not in caplog.text
+    assert "synthetic-discord-token" not in caplog.text
+    assert "synthetic-jira-token" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 class IdleScheduler:

@@ -1,6 +1,6 @@
 # Implementation issues
 
-These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8), and [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
+These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5), [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6), [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7), [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8), [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10), and [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11). JDR IDs below are local planning identifiers, not Jira tickets. Feature branches begin with a scoped implementation plan; a planning PR does not deliver the feature. Replace this status with links and verification evidence as implementation proceeds.
 
 | ID | Work item | Branch | Dependencies |
 | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ These work items are tracked as GitHub issues [#5](https://github.com/RileyHop1/
 | JDR-002 | Meeting configuration and reminders | `feat/meeting-reminders` | JDR-001 |
 | JDR-003 | Jira morning brief | `feat/jira-morning-brief` | JDR-001; scheduler from JDR-002 |
 | JDR-004 | Meeting capture and transcripts | `feat/meeting-transcripts` | JDR-001; meeting model from JDR-002; voice feasibility |
+| JDR-005 | Actionable startup failure categories | `cursor/startup-failure-categories-37c6` | JDR-001; brief settings from JDR-003; guild schema from JDR-006 |
 | JDR-006 | Persisted guild configuration | `cursor/guild-configuration-5ec9` | JDR-001; consumed by JDR-002 and JDR-003 |
 
 ## JDR-001: Development foundation
@@ -61,6 +62,12 @@ Acceptance criteria:
 - Implement explicit lifecycle states, bounded capture, cancellation, disconnect recovery, transcription failures, and cleanup.
 - Deliver long transcripts privately with attachments; never fall back to a public channel.
 - Test with synthetic audio and demonstrate the full path in a private server with consenting participants; verify deletion of local artifacts and document external retention limits.
+
+## JDR-005: Actionable startup failure categories
+
+Offline behavior is implemented. Startup logs a fixed category for invalid configuration, invalid Jira brief settings, an unreachable database, an outdated schema, Discord login failure, and forbidden guild command sync. Unexpected failures keep a generic category and the exception class name. Logs omit secrets and driver text. See [decision 0005](decisions/0005-startup-failures.md) and the troubleshooting section of [development instructions](DEVELOPMENT.md).
+
+GitHub issue: [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10).
 
 ## JDR-006: Persisted guild configuration
 

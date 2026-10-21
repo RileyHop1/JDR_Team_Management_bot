@@ -40,7 +40,7 @@ If the stored zone or time cannot be validated, that poll does not plan, send, o
 
 ## Operation
 
-Apply migration `0004` with `uv run --env-file .env alembic upgrade head`. The process rejects an older schema. Downgrading to `0003` deletes the stored settings and leaves the guild row. Run one bot process. Two processes on the same database can both deliver a reminder or a brief.
+Apply migration `0004` with `uv run --env-file .env alembic upgrade head`. An older schema logs `schema_outdated` and the process exits before registering commands. The log does not include the revision value. Downgrading to `0003` deletes the stored settings and leaves the guild row. Run one bot process. Two processes on the same database can both deliver a reminder or a brief.
 
 Logs for a successful update contain the guild id and the field names (`guild_config_updated`). They do not contain channel ids, the zone, the brief time, Jira tokens, or email addresses.
 

@@ -35,7 +35,7 @@ uv run --env-file .env alembic upgrade head
 uv run jdr-bot
 ```
 
-Migrations require only `DATABASE_URL`. Never run migrations against an unknown database. Generate future migrations with `uv run --env-file .env alembic revision --autogenerate -m "description"`, inspect the generated SQL/Python, and update the application's expected schema revision. Revision `0004` adds nullable guild settings. Downgrading it deletes those stored values. Back up deployed databases before schema changes; downgrade may delete data.
+Migrations require only `DATABASE_URL`. Alembic does not read `.env` by itself; `uv run --env-file .env` loads it. If `DATABASE_URL` is missing or blank, the migration runner exits before connecting and prints that command. It does not raise `KeyError` and it does not print a URL. Never run migrations against an unknown database. Generate future migrations with `uv run --env-file .env alembic revision --autogenerate -m "description"`, inspect the generated SQL/Python, and update the application's expected schema revision. Revision `0004` adds nullable guild settings. Downgrading it deletes those stored values. Back up deployed databases before schema changes; downgrade may delete data.
 
 ## Discord smoke check (required before issue #5 is complete)
 
@@ -106,10 +106,19 @@ Run `createdb` only once. The integration tests upgrade the schema, and the foun
 
 ## Troubleshooting and limits
 
-- `invalid_configuration`: inspect the named fields against `.env.example`; the process deliberately omits submitted values.
-- `startup_failed`: verify the database is reachable and migrated, the bot token is valid, and the bot is installed in the configured guild. Raw exceptions are intentionally not printed because providers may include credentials.
+Startup logs one fixed category and a fixed hint. It does not log exception text, driver messages, the observed migration revision, tokens, database URLs, Jira email, or JQL. Configuration failures exit 2. Every other startup failure exits 1. See [decision 0005](decisions/0005-startup-failures.md).
+
+- `invalid_configuration`: a core setting is missing or rejected. The log names the fields, for example `discord_bot_token` or `database_url`. Compare them with `.env.example`. Submitted values are omitted.
+- `invalid_jira_configuration`: the morning-brief group is only partly set, or a brief or Jira value was rejected. The log names fields such as `jira_api_token`, `jira_base_url`, `jira_user_email`, `jira_jql`, or `jira_status_names`. A token that still starts with `replace-` uses this category. Values are omitted. See [Jira morning brief](features/jira-morning-brief.md).
+- `database_unreachable`: PostgreSQL could not be used. Confirm the server is running and the role in `DATABASE_URL` can connect. The URL and the driver message are omitted.
+- `schema_outdated`: the database answered, but it is not at the revision this process expects. Run `uv run --env-file .env alembic upgrade head`. The revision read from the database is omitted.
+- `discord_login_failed`: Discord rejected the bot token, including HTTP 401. Set `DISCORD_BOT_TOKEN` from the developer portal. The token and the response body are omitted.
+- `guild_sync_forbidden`: command sync was forbidden. Install the bot in `DISCORD_GUILD_ID` with the `bot` and `applications.commands` scopes. The Discord response body is omitted.
+- `startup_failed`: an unexpected failure. The log includes `error_type` (the exception class name) and says to check credentials, connectivity, permissions, and migrations. The exception message is omitted. A Discord 403 that is not command sync uses this category.
+- Migrations with `DATABASE_URL` unset stop before connecting. The message names `uv run --env-file .env alembic upgrade head`.
+- A stored guild zone or brief time that cannot be validated does not fail startup. The next brief poll logs `brief_schedule_invalid` without the value. See [guild configuration](features/guild-configuration.md).
 - Missing slash commands: check guild ID, installation scopes, and successful startup; commands are never registered globally.
-- Failed `/status`: inspect database health and migration revision. Queries and connection attempts have bounded timeouts.
+- Failed `/status`: the reply stays `Database unavailable; contact a maintainer.` The log is `database_readiness_failed`, plus `category=schema_outdated` or `category=database_unreachable` when the failure is one of those. Queries and connection attempts have bounded timeouts.
 - Reminder jobs and, when configured, the morning brief run in one background task inside this process. Voice receive and transcription are not implemented. Two processes on the same database can deliver the same reminder or brief twice.
 - A reminder older than 60 seconds is skipped, not sent late. See [meeting reminders](features/meeting-reminders.md) for command errors and job states.
 - A morning brief is sent only on its local weekday, including later that same day. Older brief rows are not posted late. See [Jira morning brief](features/jira-morning-brief.md). The brief stays off until its environment group is complete. A stored brief channel, time, or zone overrides that environment on the next poll. See [guild configuration](features/guild-configuration.md).

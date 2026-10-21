@@ -47,8 +47,7 @@ Two processes on the same database can deliver the same brief twice. Discord and
 ## Troubleshooting
 
 - `brief_scheduler_disabled`: the brief environment group is unset. Reminders still run.
-- `missing brief settings`: at least one brief variable is set and another is missing. Names only; values are omitted.
-- `JIRA_BASE_URL must be an https://<site>.atlassian.net URL`: the URL is not Cloud-shaped, or it contains credentials or a path.
+- `invalid_jira_configuration`: startup rejected the brief group and exited 2. The log names the fields and omits the token, email, URL, and JQL. Several names mean the group is only partly set. `jira_base_url` means the URL is not `https://<site>.atlassian.net` with no credentials, path, query, or fragment. `jira_api_token` means the token is missing or still starts with `replace-`. `jira_user_email`, `jira_project_key`, `jira_jql`, `jira_status_names`, and `brief_time` name the rejected setting. `brief_channel_id` means that id is not a positive Discord channel id.
 - `The morning brief could not be loaded (access_denied)`: Jira rejected the credentials or the query permission. The job is failed and is not retried that day.
 - `The morning brief could not be loaded (rate_limited)` or `(timeout)`: the retry budget was used up the same day.
 - `No issues match the configured Jira query.`: the query succeeded and returned an `issues` array with nothing in it. The message also has the morning-brief header and the status or custom-query line.

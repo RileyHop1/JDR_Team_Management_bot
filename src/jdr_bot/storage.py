@@ -20,7 +20,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -41,6 +41,7 @@ from jdr_bot.domain import (
     as_utc,
 )
 from jdr_bot.ports import MeetingConflict, MeetingNotEditable, MeetingNotFound, ReminderInProgress
+from jdr_bot.startup import DatabaseUnreachable, SchemaOutdated
 
 SCHEMA_REVISION = "0004"
 
@@ -177,11 +178,22 @@ def create_engine(database_url: str) -> AsyncEngine:
 
 
 async def check_database(engine: AsyncEngine) -> None:
-    """Verify connectivity and migration revision before registering commands."""
-    async with engine.connect() as connection:
-        revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != SCHEMA_REVISION:
-            raise RuntimeError("database schema is outdated; run uv run alembic upgrade head")
+    """Verify connectivity and the expected migration revision.
+
+    A programming error means the schema objects are absent. Other database
+    errors mean the server could not be used. The driver message is kept as
+    the cause and is not part of the raised text: it can contain the URL.
+    The observed revision is also omitted because that column is data.
+    """
+    try:
+        async with engine.connect() as connection:
+            revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+    except ProgrammingError as error:
+        raise SchemaOutdated() from error
+    except (SQLAlchemyError, TimeoutError, OSError) as error:
+        raise DatabaseUnreachable() from error
+    if revision != SCHEMA_REVISION:
+        raise SchemaOutdated()
 
 
 class SqlMeetingStore:
