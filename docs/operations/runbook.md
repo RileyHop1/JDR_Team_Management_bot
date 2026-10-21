@@ -62,17 +62,30 @@ The bot unit below has the same `RequiresMountsFor` line. When the SSD is the on
 
 ## PostgreSQL 16
 
-Debian 13's `postgresql` metapackage is PostgreSQL 17. Install `postgresql-16` from the PostgreSQL apt repository. The official instructions are at [PostgreSQL: Linux downloads (Debian)](https://www.postgresql.org/download/linux/debian/). On this Pi the architecture is arm64 and the suite is trixie. The automated helper detects both:
+Debian 13's `postgresql` metapackage is PostgreSQL 17. Install `postgresql-16` from the PostgreSQL apt repository. Do not install the `postgresql` metapackage or `postgresql-17`. That metapackage creates a `17/main` cluster, and `pg_wrapper` defaults to the highest installed cluster. The official instructions are at [PostgreSQL: Linux downloads (Debian)](https://www.postgresql.org/download/linux/debian/). On this Pi the architecture is arm64 and the suite is trixie. The helper `/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh` is shipped by `postgresql-client-common`. `postgresql-common` depends on that package, so the install below provides the script. Pass `-y`. Without it the helper waits on `Press Enter to continue`.
 
 ```sh
 sudo apt install -y postgresql-common
-sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 sudo apt update
 sudo apt install -y postgresql-16
+if pg_lsclusters --no-header | awk '{ if ($1 == 17) found=1 } END { exit !found }'; then
+  pg_lsclusters --no-header | awk '$1 == 17 { print $2 }' | while IFS= read -r cluster; do
+    sudo pg_dropcluster --stop 17 "$cluster"
+  done
+fi
+if dpkg-query -W -f '${Status}' postgresql 2>/dev/null | grep -q 'install ok installed'; then
+  sudo apt purge -y postgresql
+fi
+if dpkg-query -W -f '${Status}' postgresql-17 2>/dev/null | grep -q 'install ok installed'; then
+  sudo apt purge -y postgresql-17
+fi
 sudo systemctl enable --now postgresql
 ```
 
-Confirm the cluster before you create the application role. `--cluster 16/main` selects the version this project runs, including when another cluster exists:
+`pg_dropcluster` deletes that cluster's data. Use it here only for a leftover default 17 cluster. This project does not use PostgreSQL 17. After the block, `pg_lsclusters` must show `16/main` and must not show a 17 cluster.
+
+Confirm the cluster before you create the application role. `--cluster 16/main` selects the version this project runs. An unqualified `psql` would read a leftover 17 cluster:
 
 ```sh
 pg_lsclusters
@@ -80,7 +93,7 @@ sudo -u postgres psql --cluster 16/main -c 'SHOW server_version;'
 sudo -u postgres psql --cluster 16/main -c 'SHOW listen_addresses;'
 ```
 
-`server_version` must start with `16.`. `listen_addresses` must be `localhost` or `127.0.0.1`. If a `postgresql` (17) cluster was also installed, do not point `DATABASE_URL` at it.
+`server_version` must start with `16.`. `listen_addresses` must be `localhost` or `127.0.0.1`.
 
 Create a role and a database whose names do not end in `_test`. The examples use `jdr_bot`. Generate a password with `openssl rand -hex 24` so it is safe inside a URL, type it into `createuser` when prompted, and store the same value only in `/etc/jdr-bot/env`. The password will be visible in your terminal while you copy it. Do not put it in the shell history file, a chat, or a command argument.
 
@@ -115,10 +128,11 @@ uv --version
 
 `uv --version` must report `0.12.23`.
 
-Create the service account, clone the repository, and install the lockfile as that account. The nologin shell blocks interactive login. `sudo -u jdrbot` can still run `bash` for these steps.
+Create the service account, clone the repository, and install the lockfile as that account. The nologin shell blocks interactive login. `sudo -u jdrbot` can still run `bash` for these steps. `/opt` is `root:root` mode `0755`, so `jdrbot` cannot create `/opt/jdr-bot`. Root creates that directory and gives it to `jdrbot`. The clone runs as `jdrbot`.
 
 ```sh
 sudo adduser --system --group --home /var/lib/jdr-bot --shell /usr/sbin/nologin jdrbot
+sudo install -d -o jdrbot -g jdrbot -m 0755 /opt/jdr-bot
 sudo -u jdrbot -H git clone https://github.com/RileyHop1/JDR_Team_Management_bot.git /opt/jdr-bot
 sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv python install && uv sync --locked'
 ```
@@ -169,17 +183,19 @@ stat -c '%a %U %G' /etc/jdr-bot/env
 
 `jdr-bot` handles `SIGTERM` and `SIGINT` in `src/jdr_bot/__main__.py`. systemd's default stop signal is `SIGTERM`. The unit stays in the foreground (`Type=simple`).
 
-`Restart=on-failure` with a start limit brings the process back after a crash or a transient `database_unreachable` (exit 1). `RestartPreventExitStatus=2` leaves invalid configuration stopped. Exit 2 will not succeed until the env file changes. Five failures in five minutes stop the restart loop. Read the journal, fix the cause, then `sudo systemctl reset-failed jdr-bot` and start again.
+`Restart=on-failure` with a start limit brings the process back after a crash or a transient `database_unreachable` (exit 1). `RestartPreventExitStatus=2` leaves invalid configuration stopped. Exit 2 will not succeed until the env file changes. Invalid configuration and an invalid Jira group exit 2. Every other startup failure exits 1. Five failures in five minutes stop the restart loop. `StartLimitIntervalSec=` and `StartLimitBurst=` belong in `[Unit]`. In `[Service]` systemd ignores them, and the default interval is 10 seconds, so the five-minute cap never applies. Read the journal, fix the cause, then `sudo systemctl reset-failed jdr-bot` and start again.
 
 Write `/etc/systemd/system/jdr-bot.service`:
 
 ```ini
 [Unit]
 Description=JDR Team Management Bot
-After=network-online.target postgresql.service
-Wants=network-online.target
-Requires=postgresql.service
+After=network-online.target postgresql.service postgresql@16-main.service
+Wants=network-online.target postgresql.service
+PartOf=postgresql@16-main.service
 RequiresMountsFor=/var/lib/postgresql
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -191,8 +207,6 @@ ExecStart=/opt/jdr-bot/.venv/bin/jdr-bot
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=2
-StartLimitIntervalSec=300
-StartLimitBurst=5
 TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
@@ -206,6 +220,8 @@ SyslogIdentifier=jdr-bot
 [Install]
 WantedBy=multi-user.target
 ```
+
+`Wants=postgresql.service` and `After=` start PostgreSQL before the bot. They do not stop the bot when PostgreSQL restarts. `Requires=postgresql.service` would: a restart of `postgresql.service` stops `jdr-bot`, the handled `SIGTERM` exits 0, and `Restart=on-failure` does not start an exit 0. `PartOf=postgresql@16-main.service` propagates stop and restart from the cluster unit, so the bot returns when that unit restarts. `unattended-upgrades` can restart `postgresql@16-main.service` when it installs a PostgreSQL security update. After that upgrade, confirm `systemctl is-active jdr-bot.service` prints `active` and that the current invocation logged `has connected to Gateway`. The migrate and dump oneshots keep `Requires=postgresql.service` because they should fail immediately when PostgreSQL is not up, and they are not left running across a later restart.
 
 `RequiresMountsFor=/var/lib/postgresql` is safe when that path is on the root filesystem: systemd then only requires `/`. `ProtectSystem=strict` makes the checkout read-only to the process. Durable state is PostgreSQL, not a file in the checkout. `ProtectHome=true` hides `/root` and `/home`. The service account's home is `/var/lib/jdr-bot`, which is where `uv python install` stores CPython, so the virtualenv's interpreter remains readable.
 
@@ -269,7 +285,7 @@ Dump as the `postgres` OS user so the password never appears on a command line. 
 ```sh
 #!/bin/sh
 set -eu
-umask 077
+umask 027
 dest=/var/backups/jdr
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 pg_dump --cluster 16/main --format=custom --file="$dest/jdr_bot-$stamp.dump" jdr_bot
@@ -277,10 +293,32 @@ find "$dest" -type f -name 'jdr_bot-*.dump' -mtime +7 -delete
 ```
 
 ```sh
-sudo install -d -o postgres -g postgres -m 0700 /var/backups/jdr
+if ! getent group jdrbackup >/dev/null; then
+  sudo groupadd --system jdrbackup
+fi
+sudo usermod -aG jdrbackup "$USER"
+sudo install -d -o postgres -g jdrbackup -m 2750 /var/backups/jdr
 ```
 
-The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. Copy the newest file to storage that is not this Pi, with `scp` or `rsync` over SSH, using a key that is not stored in the repository. Dumps contain meeting titles and other rows. Treat them as meeting data: mode `0600`, no public share, no attachment in a chat. The local `find` deletes files older than seven days. Copy them off the Pi before that.
+Run that block from the administrator's shell so `$USER` is that account. Log in again so the new group is active. `id` must list `jdrbackup`. The directory is setgid `2750`, owner `postgres`, group `jdrbackup`. `umask 027` makes each dump mode `0640`. `stat -c '%a %U %G'` on the new dump must print `640 postgres jdrbackup`. The file is not world-readable. Do not use mode `0644` or `0666`.
+
+The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. A file mode `0600` owned by `postgres` cannot be read by an off-Pi `scp` or `rsync` as the administrator. Membership in `jdrbackup` is what makes the `0640` dump readable. After the new login, copy the newest file with the administrator's own SSH key. `stamp` is the UTC stamp in the filename. Dumps contain meeting titles and other rows. Treat them as meeting data: no public share, no attachment in a chat. The local `find` deletes files older than seven days. Copy them off the Pi before that.
+
+```sh
+backup_host=${backup_host:?set backup_host to the off-Pi SSH host}
+backup_dir=${backup_dir:?set backup_dir to the destination directory}
+stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
+rsync -a --chmod=F640 "/var/backups/jdr/jdr_bot-${stamp}.dump" "${backup_host}:${backup_dir}/"
+```
+
+`--chmod=F640` keeps the remote file non-world-readable. If the SSH session is not in `jdrbackup` yet, root can read the dump and push it with the same mode. That uses root's SSH key:
+
+```sh
+backup_host=${backup_host:?set backup_host to the off-Pi SSH host}
+backup_dir=${backup_dir:?set backup_dir to the destination directory}
+stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
+sudo rsync -a --chmod=F640 "/var/backups/jdr/jdr_bot-${stamp}.dump" "${backup_host}:${backup_dir}/"
+```
 
 Write `/etc/systemd/system/jdr-pg-dump.service`:
 
@@ -322,9 +360,10 @@ sudo systemctl enable --now jdr-pg-dump.timer
 Restore test, into a database that is not `jdr_bot` and does not end in `_test`. The integration tests refuse a database whose name does not end in `_test`, and they delete rows when they run. Do not point `DATABASE_URL` or `TEST_DATABASE_URL` at `jdr_bot` or at the restore database.
 
 ```sh
+stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
 sudo systemctl start jdr-pg-dump.service
 sudo -u postgres createdb --cluster 16/main jdr_restore_check
-sudo -u postgres pg_restore --cluster 16/main --dbname=jdr_restore_check /var/backups/jdr/jdr_bot-<stamp>.dump
+sudo -u postgres pg_restore --cluster 16/main --dbname=jdr_restore_check "/var/backups/jdr/jdr_bot-${stamp}.dump"
 sudo -u postgres psql --cluster 16/main -d jdr_restore_check -c 'SELECT version_num FROM alembic_version;'
 sudo -u postgres dropdb --cluster 16/main jdr_restore_check
 ```
@@ -335,23 +374,35 @@ sudo -u postgres dropdb --cluster 16/main jdr_restore_check
 
 The application expects revision `0004`. A newer checkout can expect a newer revision. Order:
 
-1. Record `git -C /opt/jdr-bot rev-parse HEAD`.
+1. Record the deployed SHA in `previous` with `previous=$(sudo -u jdrbot -H git -C /opt/jdr-bot rev-parse HEAD)`. That value is the rollback target. Do not check it out as the upgrade.
 2. `sudo systemctl start jdr-pg-dump.service` and copy that dump off the Pi.
 3. `sudo systemctl stop jdr-bot.service`. Confirm no second process: `pgrep -a -f '/opt/jdr-bot/.venv/bin/jdr-bot'` prints nothing.
-4. Update the checkout and the virtualenv as `jdrbot` (see upgrades below).
+4. Check out the new commit and update the virtualenv as `jdrbot`, using the upgrade block below. Set `TARGET_REF` to that new commit SHA or tag. The block checks out `TARGET_REF`. It leaves `previous` for rollback.
 5. `sudo systemctl start jdr-bot-migrate.service` and confirm it exited 0.
 6. Confirm `alembic_version` with `sudo -u postgres psql --cluster 16/main -d jdr_bot -c 'SELECT version_num FROM alembic_version;'`, then `sudo systemctl start jdr-bot.service`.
 7. Confirm `scheduler_started` and the absence of `schema_outdated`.
 
 If `DATABASE_URL` is missing, Alembic exits before connecting and names `uv run --env-file .env alembic upgrade head`. It does not print a URL. On the Pi, fix `/etc/jdr-bot/env` and rerun the oneshot. The oneshot is the production form of that command. A connection error from Alembic can still include the URL. Keep that journal on the Pi.
 
-Downgrading revision `0004` to `0003` deletes stored guild settings. A downgrade can delete other data too. Restore the dump from step 2 and check out the previous commit. Do not use `alembic downgrade` on this database as the rollback.
+Downgrading revision `0004` to `0003` deletes stored guild settings. A downgrade can delete other data too. Restore the dump from step 2 and check out `previous`, the SHA recorded in step 1. Do not use `alembic downgrade` on this database as the rollback.
 
 ## One scheduler
 
 Reminders and the morning brief run in one background task inside this process ([decision 0002](../decisions/0002-meeting-reminders.md), [architecture](../ARCHITECTURE.md)). The only supervised start is `jdr-bot.service`.
 
-Before a manual `uv run jdr-bot`, stop the service and confirm the process list is empty. Start the service again when the manual run is finished. Do not run a second checkout, a second Pi, or a developer laptop against `jdr_bot`. There is no database lease.
+`/etc/jdr-bot/env` is mode `0600` and owner `root:root`. systemd reads it as root before it starts `jdrbot`. A shell command `uv run jdr-bot`, including `sudo -u jdrbot`, cannot read that file and exits `invalid_configuration` (exit 2). Do not change the file to a world-readable mode and do not add `jdrbot` to a group that can read it. Stop the service and confirm the process list is empty before a foreground run, then let systemd load the env file:
+
+```sh
+sudo systemctl stop jdr-bot.service
+pgrep -a -f '/opt/jdr-bot/.venv/bin/jdr-bot' || true
+sudo systemd-run --collect --wait --pty \
+  --uid=jdrbot --gid=jdrbot \
+  --working-directory=/opt/jdr-bot \
+  --property=EnvironmentFile=/etc/jdr-bot/env \
+  /opt/jdr-bot/.venv/bin/jdr-bot
+```
+
+`pgrep` prints nothing when no second process is running. `systemd-run` reads `EnvironmentFile` as root and then runs the program as `jdrbot`. Start `jdr-bot.service` again when the foreground run is finished. Do not run a second checkout, a second Pi, or a developer laptop against `jdr_bot`. There is no database lease.
 
 ## Logs
 
@@ -377,34 +428,65 @@ Cap journal growth on a small disk. In `/etc/systemd/journald.conf` set `SystemM
 
 ## Upgrades and rollback
 
-Stop the bot before replacing code. Record the current SHA first.
+Stop the bot before replacing code. Set `TARGET_REF` to the new commit SHA or tag to deploy. A local branch name can still point at the old commit after `fetch`. Record the SHA that is running now in `previous`. The checkout below deploys `TARGET_REF`. Later migrations step 4 uses this block for the update.
 
 ```sh
-git -C /opt/jdr-bot rev-parse HEAD
+previous=$(sudo -u jdrbot -H git -C /opt/jdr-bot rev-parse HEAD)
+printf '%s\n' "$previous"
 sudo systemctl stop jdr-bot.service
 sudo -u jdrbot -H git -C /opt/jdr-bot fetch origin
-sudo -u jdrbot -H git -C /opt/jdr-bot checkout <recorded-sha>
+sudo -u jdrbot -H git -C /opt/jdr-bot checkout "${TARGET_REF:?set TARGET_REF to the new commit SHA or tag}"
 sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv sync --locked'
 ```
 
-Take a dump, run `jdr-bot-migrate.service` if the new checkout changes the schema, then start `jdr-bot.service`. Deploy a commit you can name. Do not leave the checkout on an unrecorded local edit.
+Keep the printed `previous` value. Take a dump, run `jdr-bot-migrate.service` if the new checkout changes the schema, then start `jdr-bot.service`. Deploy a commit you can name. Do not leave the checkout on an unrecorded local edit.
 
-Rollback when the new process fails before a migration has been applied: `git checkout` the recorded SHA, `uv sync --locked`, and start the service.
-
-Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out the old SHA, `uv sync --locked`, and start.
+Rollback when the new process fails before a migration has been applied: set `previous` to the SHA printed above, check out that SHA, run `uv sync --locked`, and start the service.
 
 ```sh
+previous=${previous:?set previous to the SHA recorded before the upgrade}
+sudo systemctl stop jdr-bot.service
+sudo -u jdrbot -H git -C /opt/jdr-bot checkout "$previous"
+sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv sync --locked'
+sudo systemctl start jdr-bot.service
+```
+
+Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out that same `previous` SHA, `uv sync --locked`, and start.
+
+```sh
+previous=${previous:?set previous to the SHA recorded before the upgrade}
+stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
 sudo systemctl stop jdr-bot.service
 sudo -u postgres psql --cluster 16/main -d postgres -c 'DROP DATABASE jdr_bot;'
 sudo -u postgres psql --cluster 16/main -d postgres -c 'CREATE DATABASE jdr_bot OWNER jdr_bot;'
-sudo -u postgres pg_restore --cluster 16/main --dbname=jdr_bot /var/backups/jdr/jdr_bot-<stamp>.dump
+sudo -u postgres pg_restore --cluster 16/main --dbname=jdr_bot "/var/backups/jdr/jdr_bot-${stamp}.dump"
+sudo -u postgres psql --cluster 16/main -d jdr_bot -c 'SELECT version_num FROM alembic_version;'
 ```
 
-Confirm `alembic_version`, then start the service on the old SHA. `DROP DATABASE` destroys the current rows. Use it only to replace them with the dump you just verified.
+`version_num` must match the dump before the next block. `DROP DATABASE` destroys the current rows. Use it only to replace them with the dump you just verified. The checkout is `previous`, the SHA recorded before the upgrade.
+
+```sh
+previous=${previous:?set previous to the SHA recorded before the upgrade}
+sudo -u jdrbot -H git -C /opt/jdr-bot checkout "$previous"
+sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv sync --locked'
+sudo systemctl start jdr-bot.service
+```
 
 ## Gateway and voice checks
 
-Follow [verification on the Pi](../decisions/0006-raspberry-pi-hosting.md#verification-on-the-pi). Outbound TLS to `gateway.discord.gg:443` and `GET https://discord.com/api/v10/gateway` are the reachability checks. `guild_commands_registered` is the session check. Voice UDP stays pending until a voice-capable build receives a UDP discovery reply on this network. Do not treat a successful HTTPS check as a voice result.
+Follow [verification on the Pi](../decisions/0006-raspberry-pi-hosting.md#verification-on-the-pi). Outbound TLS to `gateway.discord.gg:443` and `GET https://discord.com/api/v10/gateway` are the reachability checks. They are not a gateway session.
+
+The session check is the current service invocation. `systemctl is-active jdr-bot.service` must print `active`. Then:
+
+```sh
+sudo journalctl -u jdr-bot.service \
+  _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value jdr-bot.service)" \
+  --no-pager
+```
+
+`_SYSTEMD_INVOCATION_ID` is this start only. An unbounded `journalctl -u jdr-bot`, or `-b` alone, mixes earlier boots and earlier starts. This invocation must include a `discord.gateway` line containing `has connected to Gateway`. discord.py 2.7.1 writes `Shard ID %s has connected to Gateway (Session ID: %s).` from `discord/gateway.py` when the WebSocket receives READY. The same invocation must not include `discord_login_failed`. Do not copy the session id into a chat or an issue.
+
+`guild_commands_registered` is logged from `setup_hook` during HTTP login, before `Client.connect`. `on_ready` does not log a ready line of its own, and `scheduler_started` is logged from `setup_hook` before the socket opens. Neither line is the session check. The Discord smoke check in [development instructions](../DEVELOPMENT.md) is the operator-visible half: the bot shows online and answers the slash command. Voice UDP stays pending until a voice-capable build receives a UDP discovery reply on this network. Do not treat a successful HTTPS check as a voice result.
 
 When the brief is enabled, confirm the Jira host answers TLS without sending the token:
 
