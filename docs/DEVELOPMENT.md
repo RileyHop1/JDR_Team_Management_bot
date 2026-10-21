@@ -1,8 +1,20 @@
 # Development and operations
 
+## Current verification status
+
+These behaviors are merged on `main`, and hosted CI passed on each pull request. Offline tests do not replace the live checks later in this page.
+
+- Foundation, [PR #9](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/9) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/38816010204)). The Discord smoke check below is still required before issue [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5) is complete.
+- Meeting reminders, [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). The reminder smoke check below has not been run. [Decision 0002](decisions/0002-meeting-reminders.md) needs team confirmation. Issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open.
+- Jira morning brief, [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833)). The brief smoke check below has not been run. [Decision 0003](decisions/0003-jira-morning-brief.md) needs team confirmation. Issue [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) stays open.
+- Guild configuration, [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559)). Issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) is closed. The `/config` smoke check below has not been run, and [decision 0004](decisions/0004-guild-configuration.md) still needs team confirmation.
+- Startup failure categories, [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18) ([CI passed](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270)). Issue [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) is closed. [Decision 0005](decisions/0005-startup-failures.md) is accepted for this implementation. No separate live Discord check was required.
+
+[PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the meeting-transcript planning document only; implementation has not started (issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8)). Not started: the hosting runbook (issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12)) and GitHub issue and pull request templates (issue [#14](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/14)).
+
 ## Install
 
-Use Python **3.12.14**, uv **0.12.23**, and PostgreSQL **16**. The Python patch is pinned in `.python-version`; `uv.lock` pins runtime and development dependencies. The initial executable supports Linux/macOS signal handling; Windows users should use WSL or a Linux container.
+Use Python **3.12.14**, uv **0.12.23**, and PostgreSQL **16**. The Python patch is pinned in `.python-version`; `uv.lock` pins runtime and development dependencies. The executable supports Linux/macOS signal handling; Windows users should use WSL or a Linux container.
 
 From the repository root:
 
@@ -73,9 +85,9 @@ This check has not been run. Offline tests do not replace it. Use a Jira user th
 
 Do not put real issue titles, assignee names, JQL, or tokens in the PR. Say only whether each step passed.
 
-## Guild configuration smoke check (required before issue #11 is complete)
+## Guild configuration smoke check
 
-This check has not been run. Offline tests do not replace it.
+This check has not been run. Offline tests do not replace it. [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) merged the commands and closed issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11). The check is still outstanding, as is team confirmation of [decision 0004](decisions/0004-guild-configuration.md).
 
 1. Complete the foundation smoke check. Apply migrations through revision `0004`.
 2. As an operator, run `/config view`. With no stored row, the time zone should be `BOT_TIMEZONE` and marked `environment`. Meetings channel and brief time are `not set` unless those environment values are present.

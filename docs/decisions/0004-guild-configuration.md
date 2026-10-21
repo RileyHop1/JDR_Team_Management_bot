@@ -1,6 +1,6 @@
 # 0004: Persisted guild configuration
 
-Status: provisional. The team still needs to confirm this before treating it as final. It was chosen so JDR-006 could store the non-secret settings in issue #11 without moving Jira credentials, or the process-wide Jira query, into PostgreSQL.
+Status: provisional. The behavior below is what [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) merged. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559)). GitHub issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) is closed. The team still needs to confirm this before treating it as final, and the live `/config` check has not been run. It was chosen so JDR-006 could store the non-secret settings in issue #11 without moving Jira credentials, or the process-wide Jira query, into PostgreSQL.
 
 ## What is stored
 

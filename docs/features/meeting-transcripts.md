@@ -1,6 +1,6 @@
 # Meeting capture and transcripts
 
-Status: planning only; implementation and validation are outstanding.
+Status: planning document merged; implementation not started. [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged this planning document on 2026-10-15 and included no application code. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) is open. Implementation and validation are outstanding.
 
 Backlog item: [JDR-004](../ISSUES.md#jdr-004-meeting-capture-and-transcripts).
 

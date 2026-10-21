@@ -1,6 +1,6 @@
 # Jira morning brief
 
-Status: implemented and covered by offline tests. A live read-only query and brief in the test Jira site and Discord server have not been demonstrated, so JDR-003 is not complete. The query, schedule, and recovery rules are provisional and need team confirmation; see [decision 0003](../decisions/0003-jira-morning-brief.md).
+Status: merged in [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39097915833)). [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) lets a stored guild channel, time, and zone override the environment. Offline tests cover the behavior below. A live read-only query and brief in the test Jira site and Discord server have not been demonstrated, and [decision 0003](../decisions/0003-jira-morning-brief.md) is provisional and needs team confirmation, so GitHub issue [#7](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/7) stays open.
 
 Backlog item: [JDR-003](../ISSUES.md#jdr-003-jira-morning-brief).
 

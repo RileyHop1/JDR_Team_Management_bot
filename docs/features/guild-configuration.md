@@ -1,6 +1,6 @@
 # Persisted guild configuration
 
-Status: implemented and covered by offline tests. A live `/config` check in the Discord test server has not been run, so JDR-006 is not complete. The storage and job rules are provisional and need team confirmation; see [decision 0004](../decisions/0004-guild-configuration.md).
+Status: merged in [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39531857559)). Offline tests cover the behavior below. GitHub issue [#11](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/11) is closed. A live `/config` check in the Discord test server has not been run, and [decision 0004](../decisions/0004-guild-configuration.md) is provisional and needs team confirmation.
 
 Backlog item: [JDR-006](../ISSUES.md#jdr-006-persisted-guild-configuration).
 

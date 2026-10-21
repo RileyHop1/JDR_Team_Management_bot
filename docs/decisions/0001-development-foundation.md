@@ -1,6 +1,6 @@
 # 0001: Single-guild Python foundation
 
-Status: accepted for the initial implementation; live Discord validation pending.
+Status: accepted for the initial implementation and merged in [PR #9](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/9). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/38816010204)). Live Discord validation is still pending. GitHub issue [#5](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/5) stays open until that smoke check passes.
 
 Use Python 3.12.14, uv with a committed lockfile, discord.py 2.x for guild-scoped slash commands, Pydantic Settings for configuration, SQLAlchemy/psycopg for asynchronous PostgreSQL access, and Alembic migrations. PostgreSQL 16 is the development/CI baseline.
 

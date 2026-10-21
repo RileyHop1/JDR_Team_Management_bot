@@ -1,6 +1,6 @@
 # 0005: Startup failure categories
 
-Status: accepted for this implementation.
+Status: accepted for this implementation. Merged in [PR #18](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/18). Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39537651270)). GitHub issue [#10](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/10) is closed. This record does not leave a separate team-confirmation step open. No live Discord check was required.
 
 `main` maps startup failures to fixed categories and exits non-zero. Invalid core configuration and an incomplete or rejected Jira morning-brief group exit 2. An unreachable database, a role that can connect but cannot read the schema, an outdated schema, Discord login failure, forbidden guild command sync, and unexpected failures exit 1.
 

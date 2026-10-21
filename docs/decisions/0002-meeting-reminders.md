@@ -1,6 +1,6 @@
 # 0002: Meeting reminders
 
-Status: provisional. The team still needs to confirm this before treating it as final. It was chosen so JDR-002 could be implemented without inventing a broader permission model or a late-delivery policy. It follows the conservative recovery default already proposed in the architecture: skip reminder offsets that are already past, and keep future ones.
+Status: provisional. [PR #15](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/15) merged the reminder policy. Hosted CI passed ([workflow run](https://github.com/RileyHop1/JDR_Team_Management_bot/actions/runs/39085620688)). [PR #17](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/17) added the stored-guild-zone fallback used when a command omits the zone. [PR #16](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/16) added the shared poll paragraph: the morning brief is a separate job type on the same poll task, and its policy is [decision 0003](0003-jira-morning-brief.md). The team still needs to confirm this before treating it as final. The live reminder smoke check has not been run, so GitHub issue [#6](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/6) stays open. It was chosen so JDR-002 could be implemented without inventing a broader permission model or a late-delivery policy. It follows the conservative recovery default already described in the architecture: skip reminder offsets that are already past, and keep future ones.
 
 ## Who can manage meetings
 
