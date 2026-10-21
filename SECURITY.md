@@ -16,4 +16,4 @@ Treat Jira descriptions, Discord input, and transcript text as untrusted content
 
 ## Reporting a vulnerability
 
-Contact the repository maintainers privately through the team's established channel. Do not post secrets, real transcripts, or exploitable details in public issues. There is no dedicated security contact configured yet; maintainers should add one before public deployment.
+Report a vulnerability privately to Daniil at daniil.nahl@protonmail.com. Do not post secrets, real transcripts, or exploitable details in public issues.
