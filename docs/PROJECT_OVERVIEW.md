@@ -25,7 +25,7 @@ The brief initially reflects current Jira state. Historical changes, blockers, o
 6. **Transcription feasibility:** not started. Prove supported voice capture, audio processing, consent controls, and provider compatibility. [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged the planning document only.
 7. **Meeting records:** not started. Integrate transcription, delivery, deletion, failure recovery, and operational documentation after the feasibility spike.
 
-Develop reminders and Jira independently of the voice feasibility spike. Do not promise the recording feature until that spike passes. Still outstanding after the merges above: the live Discord, reminder, Jira, and `/config` checks; team confirmation of decisions 0002, 0003, and 0004; meeting-capture implementation; and the hosting runbook (issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12)). The current record is [implementation issues](ISSUES.md).
+Develop reminders and Jira independently of the voice feasibility spike. Do not promise the recording feature until that spike passes. Still outstanding after the merges above: the live Discord, reminder, Jira, and `/config` checks; team confirmation of decisions 0002, 0003, and 0004; meeting-capture implementation; and live verification of the Raspberry Pi gateway session and voice UDP (provisional [decision 0006](decisions/0006-raspberry-pi-hosting.md), [production runbook](operations/runbook.md), issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12)). The hosting choice and the runbook are recorded. The current record is [implementation issues](ISSUES.md).
 
 ## Out of scope initially
 

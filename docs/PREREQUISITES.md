@@ -36,9 +36,9 @@ A meeting stores its voice channel, start, time zone, and reminder offsets. Guil
 
 ## Networking
 
-Runtime needs Discord HTTPS and gateway WebSocket access, Jira HTTPS access, database connectivity, and the selected transcription provider. Discord voice additionally needs the UDP transport and dynamically selected voice endpoints supported by the library. HTTPS egress alone may not support voice capture in a cloud environment. Validate actual runtime transport support before committing to hosting there.
+Runtime needs Discord HTTPS and gateway WebSocket access, Jira HTTPS access when the brief is enabled, and database connectivity on the same machine. The hosting choice is the team's Raspberry Pi in provisional [decision 0006](decisions/0006-raspberry-pi-hosting.md). That record lists the outbound allowlist: Discord gateway, API, and CDN on TCP 443; Jira Cloud `https://<site>.atlassian.net` only while the brief group is set; PostgreSQL on loopback; install-time package indexes. Discord's voice documentation uses a separate UDP flow and a voice WebSocket whose host and port arrive per session. HTTPS egress does not prove voice. Voice UDP on the Pi is pending the verification procedure in decision 0006. No transcription provider is selected.
 
-Derive concrete host allowlists from chosen services; do not enable unrestricted access as a shortcut. Proxy-injected HTTPS secrets may not work for gateway identification, voice connections, or database clients that need actual credentials. Verify the hosting platform's supported credential injection for each protocol.
+The production env file is `/etc/jdr-bot/env`, mode `0600`, injected by systemd. See the [production runbook](operations/runbook.md). Proxy-injected HTTPS secrets may not work for gateway identification, voice connections, or database clients that need actual credentials. The Pi passes `DATABASE_URL` and `DISCORD_BOT_TOKEN` in that environment. `Settings` reads both. Alembic reads `DATABASE_URL` only.
 
 ## Decisions to resolve before the relevant feature
 
@@ -47,6 +47,6 @@ Derive concrete host allowlists from chosen services; do not enable unrestricted
 3. Which Jira deployment, project/filter, and exact statuses mean “being worked on”? Should the brief include all project issues or just the team's assigned work? Decision 0003 provisionally uses Jira Cloud, an explicit status list or `JIRA_JQL`, and every matching issue in the project (no assignee filter). Confirm that before treating it as final.
 4. Who may configure schedules, start recording, stop recording, access transcripts, and request deletion? How will notice and consent work for late arrivals? Meeting create, list, view, update, and cancel are provisionally limited to `DISCORD_OPERATOR_ROLE_ID` ([decision 0002](decisions/0002-meeting-reminders.md)). `/config view` and `/config set` use that same role ([decision 0004](decisions/0004-guild-configuration.md)). Recording and transcript access remain open.
 5. What recording/transcript retention, provider data policy, language support, budget, and maximum meeting duration are acceptable?
-6. Where will the bot run continuously, and does that environment support Discord voice networking?
+6. Where will the bot run continuously, and does that environment support Discord voice networking? The continuous host is the team's Raspberry Pi, recorded in provisional [decision 0006](decisions/0006-raspberry-pi-hosting.md) and operated with the [production runbook](operations/runbook.md). Gateway WebSocket and voice UDP on that Pi are not verified. Issue [#12](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/12) stays open until the procedure in decision 0006 is run there. Voice capture still depends on that result.
 
 Record decisions before implementation depends on them. Their absence should not prevent work on tooling, offline domain tests, or the basic reminder pipeline.
