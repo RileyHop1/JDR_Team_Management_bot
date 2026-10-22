@@ -1,6 +1,6 @@
 # Meeting capture and transcripts
 
-Status: planning document merged; implementation not started. [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged this planning document on 2026-10-15 and included no application code. Retention is approved by the maintainer in [decision 0007](../decisions/0007-meeting-data-retention.md): meeting content is kept for at most 30 days from capture end, in UTC, and then deleted. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) stays open. Voice UDP on the Pi has not been verified ([decision 0006](../decisions/0006-raspberry-pi-hosting.md)). Implementation and validation are outstanding.
+Status: planning document merged; implementation not started. [PR #4](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/4) merged this planning document on 2026-10-15 and included no application code. [PR #22](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/22) records the retention decision. Retention is approved by the maintainer in [decision 0007](../decisions/0007-meeting-data-retention.md): meeting content is kept for at most 30 days from capture end, in UTC, and then deleted. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) stays open. Voice UDP on the Pi has not been verified ([decision 0006](../decisions/0006-raspberry-pi-hosting.md)). Implementation and validation are outstanding.
 
 Backlog item: [JDR-004](../ISSUES.md#jdr-004-meeting-capture-and-transcripts).
 

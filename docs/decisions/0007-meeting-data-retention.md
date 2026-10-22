@@ -1,6 +1,6 @@
 # 0007: Meeting data retention
 
-Status: approved by the maintainer. Daniil, project maintainer and security contact (daniil.nahl@protonmail.com), approved this retention period. This record does not leave a team-confirmation step open for the period. It does not implement capture or transcription. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) stays open. Voice UDP on the Pi is still pending in [decision 0006](0006-raspberry-pi-hosting.md), and implementation has not started.
+Status: approved by the maintainer. Recorded in [PR #22](https://github.com/RileyHop1/JDR_Team_Management_bot/pull/22). Daniil, project maintainer and security contact (daniil.nahl@protonmail.com), approved this retention period. This record does not leave a team-confirmation step open for the period. It does not implement capture or transcription. GitHub issue [#8](https://github.com/RileyHop1/JDR_Team_Management_bot/issues/8) stays open. Voice UDP on the Pi is still pending in [decision 0006](0006-raspberry-pi-hosting.md), and implementation has not started.
 
 The repository required this decision before capture could be implemented:
 
