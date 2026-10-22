@@ -289,6 +289,7 @@ umask 027
 dest=/var/backups/jdr
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 pg_dump --cluster 16/main --format=custom --file="$dest/jdr_bot-$stamp.dump" jdr_bot
+# Decision 0007 caps every copy at 30 days. This local rotation is shorter.
 find "$dest" -type f -name 'jdr_bot-*.dump' -mtime +7 -delete
 ```
 
@@ -302,7 +303,7 @@ sudo install -d -o postgres -g jdrbackup -m 2750 /var/backups/jdr
 
 Run that block from the administrator's shell so `$USER` is that account. Log in again so the new group is active. `id` must list `jdrbackup`. The directory is setgid `2750`, owner `postgres`, group `jdrbackup`. `umask 027` makes each dump mode `0640`. `stat -c '%a %U %G'` on the new dump must print `640 postgres jdrbackup`. The file is not world-readable. Do not use mode `0644` or `0666`.
 
-The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. A file mode `0600` owned by `postgres` cannot be read by an off-Pi `scp` or `rsync` as the administrator. Membership in `jdrbackup` is what makes the `0640` dump readable. After the new login, copy the newest file with the administrator's own SSH key. `stamp` is the UTC stamp in the filename. Dumps contain meeting titles and other rows. Treat them as meeting data: no public share, no attachment in a chat. The local `find` deletes files older than seven days. Copy them off the Pi before that.
+The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. A file mode `0600` owned by `postgres` cannot be read by an off-Pi `scp` or `rsync` as the administrator. Membership in `jdrbackup` is what makes the `0640` dump readable. After the new login, copy the newest file with the administrator's own SSH key. `stamp` is the UTC stamp in the filename. Dumps contain meeting titles and other rows. Once meeting capture stores content, a dump contains that content too. Treat every dump as meeting data: no public share, no attachment in a chat. The local `find` uses `-mtime +7`. GNU `find` ignores the fractional part of a 24-hour period, so that removes a dump once it is eight days old. Leave that number. It is inside the 30-day cap in [decision 0007](../decisions/0007-meeting-data-retention.md). Copy a dump off the Pi before the local file is deleted, and delete that off-Pi copy once it is 30 days old. A dump kept for rollback is under the same cap. The live database still keeps meeting titles, reminders, and guild settings. This cap does not expire those rows.
 
 ```sh
 backup_host=${backup_host:?set backup_host to the off-Pi SSH host}
@@ -318,6 +319,13 @@ backup_host=${backup_host:?set backup_host to the off-Pi SSH host}
 backup_dir=${backup_dir:?set backup_dir to the destination directory}
 stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
 sudo rsync -a --chmod=F640 "/var/backups/jdr/jdr_bot-${stamp}.dump" "${backup_host}:${backup_dir}/"
+```
+
+Delete off-Pi copies once they are 30 days old. This includes dumps kept for rollback. GNU `find` ignores the fractional part of a 24-hour period, so `-mtime +29` removes a file whose age is 30 days or more. `-mtime +30` would leave it through the next day. `rsync -a` keeps the Pi file's modification time, which is when `pg_dump` finished. The filename stamp is the UTC time just before the dump. Run the command on the backup host at least daily. Do not keep another copy past that age. A file younger than 30 days can still hold capture rows that were already days old when the dump was taken. Deleting the file at 30 days is the rotation this runbook can apply without splitting a dump by table. A restore loads whatever the file still holds. Do not restore a dump to recover meeting-capture content after its deletion deadline. After a restore, content past that deadline has to be purged again before the database matches [decision 0007](../decisions/0007-meeting-data-retention.md).
+
+```sh
+backup_dir=${backup_dir:?set backup_dir to the destination directory}
+find "$backup_dir" -type f -name 'jdr_bot-*.dump' -mtime +29 -delete
 ```
 
 Write `/etc/systemd/system/jdr-pg-dump.service`:
@@ -375,7 +383,7 @@ sudo -u postgres dropdb --cluster 16/main jdr_restore_check
 The application expects revision `0004`. A newer checkout can expect a newer revision. Order:
 
 1. Record the deployed SHA in `previous` with `previous=$(sudo -u jdrbot -H git -C /opt/jdr-bot rev-parse HEAD)`. That value is the rollback target. Do not check it out as the upgrade.
-2. `sudo systemctl start jdr-pg-dump.service` and copy that dump off the Pi.
+2. `sudo systemctl start jdr-pg-dump.service` and copy that dump off the Pi. Delete that copy once it is 30 days old, with the other off-Pi dumps.
 3. `sudo systemctl stop jdr-bot.service`. Confirm no second process: `pgrep -a -f '/opt/jdr-bot/.venv/bin/jdr-bot'` prints nothing.
 4. Check out the new commit and update the virtualenv as `jdrbot`, using the upgrade block below. Set `TARGET_REF` to that new commit SHA or tag. The block checks out `TARGET_REF`. It leaves `previous` for rollback.
 5. `sudo systemctl start jdr-bot-migrate.service` and confirm it exited 0.
@@ -420,7 +428,7 @@ journalctl -u jdr-bot -n 100 --no-pager
 
 Startup failures use the fixed categories in [decision 0005](../decisions/0005-startup-failures.md) and the troubleshooting list in [development instructions](../DEVELOPMENT.md). Configuration failures exit 2. Other startup failures exit 1. The lines name categories and field names. They omit exception text, driver messages, the revision value, tokens, database URLs, Jira email, and JQL.
 
-Job lines include ids and categories (`reminder_delivered`, `brief_delivered`, `meeting_created`, `guild_config_updated`). They do not include meeting titles, issue titles, assignee names, transcript text, or audio. Voice transcripts are not implemented. Do not turn on discord.py debug logging, and do not wrap the service in a shell that prints the environment. Either change can put a secret in the journal.
+Job lines include ids and categories (`reminder_delivered`, `brief_delivered`, `meeting_created`, `guild_config_updated`). They do not include meeting titles, issue titles, assignee names, transcript text, or audio. Voice transcripts are not implemented. When capture exists, the purge logs `meeting_content_purged`, `meeting_content_deleted_on_request`, or `meeting_content_purge_failed` with identifiers and a fixed category, as [decision 0007](../decisions/0007-meeting-data-retention.md) requires. Those lines omit meeting content. Do not turn on discord.py debug logging, and do not wrap the service in a shell that prints the environment. Either change can put a secret in the journal.
 
 If a journal line contains a token or meeting content, stop the service, rotate that credential, and report it to the contact in [SECURITY.md](../../SECURITY.md). Do not paste the line into a public issue.
 
@@ -451,7 +459,7 @@ sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv sync --locked'
 sudo systemctl start jdr-bot.service
 ```
 
-Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out that same `previous` SHA, `uv sync --locked`, and start.
+Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out that same `previous` SHA, `uv sync --locked`, and start. That dump is under the 30-day backup cap in [decision 0007](../decisions/0007-meeting-data-retention.md). A restore is not a way to keep meeting-capture content past its deletion deadline.
 
 ```sh
 previous=${previous:?set previous to the SHA recorded before the upgrade}

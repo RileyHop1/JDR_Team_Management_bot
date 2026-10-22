@@ -4,7 +4,7 @@ Status: provisional. [PR #15](https://github.com/RileyHop1/JDR_Team_Management_b
 
 ## Who can manage meetings
 
-Only a member who holds `DISCORD_OPERATOR_ROLE_ID` in `DISCORD_GUILD_ID` can create, list, view, update, or cancel a meeting. An administrator without that role is rejected. No separate viewer role is introduced here. Recording and transcript permissions remain open in the prerequisites.
+Only a member who holds `DISCORD_OPERATOR_ROLE_ID` in `DISCORD_GUILD_ID` can create, list, view, update, or cancel a meeting. An administrator without that role is rejected. No separate viewer role is introduced here. Recording and transcript permissions remain open in the prerequisites. The retention period is approved in [decision 0007](0007-meeting-data-retention.md).
 
 ## What a meeting is
 
