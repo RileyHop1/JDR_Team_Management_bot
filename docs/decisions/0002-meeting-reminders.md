@@ -8,7 +8,7 @@ Only a member who holds `DISCORD_OPERATOR_ROLE_ID` in `DISCORD_GUILD_ID` can cre
 
 ## What a meeting is
 
-Meetings are one-shot. Recurrence is out of scope. The voice channel is stored and named in the reminder; this feature does not join voice.
+Meetings are one-shot. Recurrence is out of scope. The voice channel is stored and named in the reminder; this feature does not join voice. Retention of meeting content, once capture exists, is approved in [decision 0007](0007-meeting-data-retention.md): meeting content is deleted within 30 days of capture end.
 
 The operator supplies:
 

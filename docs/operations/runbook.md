@@ -263,7 +263,7 @@ Do not enable the migrate unit. Run it only when you intend to change the schema
 
 ## First migration and start
 
-Install `/usr/local/sbin/jdr-pg-dump`, `/var/backups/jdr`, and the timer from the next section before you migrate. Run `sudo systemctl start jdr-pg-dump.service` and confirm a dump file exists. On a new database the dump has no meetings yet. Then:
+Install `/usr/local/sbin/jdr-pg-dump`, `/usr/local/sbin/jdr-backup-rotate`, `/var/backups/jdr`, and both timers from the next section before you migrate. Run `sudo systemctl start jdr-pg-dump.service` and confirm a dump file exists. On a new database the dump has no meetings yet. Enable the rotation timer as well: a failed dump must not be what deletes old files. Then:
 
 ```sh
 sudo systemctl start jdr-bot-migrate.service
@@ -289,8 +289,9 @@ umask 027
 dest=/var/backups/jdr
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 pg_dump --cluster 16/main --format=custom --file="$dest/jdr_bot-$stamp.dump" jdr_bot
-find "$dest" -type f -name 'jdr_bot-*.dump' -mtime +7 -delete
 ```
+
+`set -eu` stops this script when `pg_dump` fails. Rotation is not in the script. A stretch of failed dumps still deletes old files, because `jdr-backup-rotate.timer` is a separate unit and does not follow this oneshot. The filename stamp is the UTC instant just before `pg_dump`. [Decision 0007](../decisions/0007-meeting-data-retention.md) uses that stamp as the age of the copy.
 
 ```sh
 if ! getent group jdrbackup >/dev/null; then
@@ -302,7 +303,7 @@ sudo install -d -o postgres -g jdrbackup -m 2750 /var/backups/jdr
 
 Run that block from the administrator's shell so `$USER` is that account. Log in again so the new group is active. `id` must list `jdrbackup`. The directory is setgid `2750`, owner `postgres`, group `jdrbackup`. `umask 027` makes each dump mode `0640`. `stat -c '%a %U %G'` on the new dump must print `640 postgres jdrbackup`. The file is not world-readable. Do not use mode `0644` or `0666`.
 
-The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. A file mode `0600` owned by `postgres` cannot be read by an off-Pi `scp` or `rsync` as the administrator. Membership in `jdrbackup` is what makes the `0640` dump readable. After the new login, copy the newest file with the administrator's own SSH key. `stamp` is the UTC stamp in the filename. Dumps contain meeting titles and other rows. Treat them as meeting data: no public share, no attachment in a chat. The local `find` deletes files older than seven days. Copy them off the Pi before that.
+The directory is on the same machine as the database. A dump that never leaves the Pi is lost with the disk. A file mode `0600` owned by `postgres` cannot be read by an off-Pi `scp` or `rsync` as the administrator. Membership in `jdrbackup` is what makes the `0640` dump readable. After the new login, copy the newest file with the administrator's own SSH key. `stamp` is the UTC stamp in the filename. Dumps contain meeting titles and other rows. Once meeting capture stores content, a dump contains that content too. Treat every dump as meeting data: no public share, no attachment in a chat. Copy a dump off the Pi before the local rotation deletes it. Both copies expire from the filename stamp, not from the time of the copy, and both are deleted before the file is 7 days old ([decision 0007](../decisions/0007-meeting-data-retention.md)). A dump kept for rollback lives in the same directory tree and keeps that stamp in its name. The live database still keeps meeting titles, reminders, and guild settings. This rotation does not expire those rows.
 
 ```sh
 backup_host=${backup_host:?set backup_host to the off-Pi SSH host}
@@ -319,6 +320,100 @@ backup_dir=${backup_dir:?set backup_dir to the destination directory}
 stamp=${stamp:?set stamp to the UTC stamp in the dump filename}
 sudo rsync -a --chmod=F640 "/var/backups/jdr/jdr_bot-${stamp}.dump" "${backup_host}:${backup_dir}/"
 ```
+
+Delete every dump file before it is 7 days old. That includes the Pi copy, the off-Pi copy, and a dump kept for rollback. [Decision 0007](../decisions/0007-meeting-data-retention.md) splits the 30-day total into a 23-day live purge and this dump cap, so a dump taken just before the live purge is gone by day 30. The age is the filename stamp, not the modification time. `rsync -a` still preserves modification time and mode. Rotation does not read that time, so a later copy that resets it does not extend the file's life. Do not keep another copy outside the rotated directory. A restore loads whatever the file still holds. Do not restore a dump to recover meeting-capture content after its deletion deadline. After a restore, content past that deadline has to be purged again before the database matches decision 0007.
+
+Install `/usr/local/sbin/jdr-backup-rotate` mode `0755`, owner `root:root`, on the Pi and on the backup host. The script is POSIX `sh`. It does not use GNU `find -mmin`, `find -mtime`, or `find -delete`. The backup host is not required to have GNU find. It deletes a file whose name ends in `.dump` once the embedded `jdr_bot-YYYYMMDDTHHMMSSZ` stamp is 6 days (8640 minutes) old, at any depth under the directory you pass. A rollback name such as `jdr_bot-20261023T004730Z.rollback.dump` carries the same stamp and is included. A `.dump` file with no stamp is deleted on the next run.
+
+```sh
+#!/bin/sh
+# Delete JDR pg_dump files before they are 7 days old.
+# POSIX sh: no GNU find -mmin, -mtime, or -delete.
+# A day is 24 hours. The filename stamp is the UTC instant just before pg_dump.
+# Files are deleted once that stamp is 6 days (8640 minutes) old.
+set -eu
+
+classify() {
+  # Print "delete" or "keep". Empty output is a failure.
+  printf '%s\n%s\n' "$1" "$2" | awk '
+    NR == 1 { name = $0 }
+    NR == 2 {
+      cutoff = $0
+      s = name
+      n = length(s)
+      i = 1
+      stamp = ""
+      while (i + 23 <= n) {
+        if (substr(s, i, 8) == "jdr_bot-") {
+          cand = substr(s, i + 8, 16)
+          if (cand ~ /^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z$/) {
+            stamp = cand
+            break
+          }
+        }
+        i++
+      }
+      if (stamp == "" || stamp <= cutoff) {
+        print "delete"
+      } else {
+        print "keep"
+      }
+    }
+  '
+}
+
+if [ "${1:-}" = "--apply" ]; then
+  cutoff=${2:?missing cutoff}
+  shift 2
+  for path do
+    name=${path##*/}
+    decision=$(classify "$name" "$cutoff") || decision=
+    if [ "$decision" != "delete" ] && [ "$decision" != "keep" ]; then
+      printf '%s\n' "jdr-backup-rotate: classify failed" >&2
+      exit 1
+    fi
+    if [ "$decision" = "delete" ]; then
+      rm -f -- "$path"
+    fi
+  done
+  exit 0
+fi
+
+dest=${1:?set dest to the dump directory}
+if [ ! -d "$dest" ]; then
+  printf '%s\n' "jdr-backup-rotate: not a directory" >&2
+  exit 1
+fi
+
+now=$(date -u +%Y%m%d%H%M%S)
+cutoff=$(printf '%s\n' "$now" | awk '
+  BEGIN { split("31 28 31 30 31 30 31 31 30 31 30 31", md) }
+  {
+    y = substr($0, 1, 4) + 0
+    mo = substr($0, 5, 2) + 0
+    d = substr($0, 7, 2) + 0
+    rest = substr($0, 9, 6)
+    d -= 6
+    while (d < 1) {
+      mo -= 1
+      if (mo < 1) {
+        mo = 12
+        y -= 1
+      }
+      dim = md[mo] + 0
+      if (mo == 2 && (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))) {
+        dim = 29
+      }
+      d += dim
+    }
+    printf "%04d%02d%02dT%sZ\n", y, mo, d, rest
+  }
+')
+
+find "$dest" -type f -name '*.dump' -exec "$0" --apply "$cutoff" {} +
+```
+
+Six days is the eligibility point, not the cap. The cap is 7 days (10080 minutes). `jdr-backup-rotate.timer` can be late by two hourly slots, plus `RandomizedDelaySec=5min`, plus `AccuracySec=1min`: 126 minutes. The latest deletion is 8640 + 126 = 8766 minutes of age (6 days, 2 hours, and 6 minutes), which is 1314 minutes (21 hours and 54 minutes) before the cap. GNU `find -mtime +6` would not become true until 7 days, and GNU `-mmin` is not portable to the backup host. This script is the command both hosts run.
 
 Write `/etc/systemd/system/jdr-pg-dump.service`:
 
@@ -355,7 +450,79 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now jdr-pg-dump.timer
 ```
 
-`Persistent=true` runs a missed dump after a power cut. Run one dump by hand before you rely on the timer: `sudo systemctl start jdr-pg-dump.service`.
+`Persistent=true` runs a missed dump after a power cut. Run one dump by hand before you rely on the timer: `sudo systemctl start jdr-pg-dump.service`. The dump timer does not rotate files.
+
+Write `/etc/systemd/system/jdr-backup-rotate.service`. It does not `Require=` or `After=` `jdr-pg-dump.service` or `postgresql.service`. Rotation runs when `pg_dump` has been failing and when PostgreSQL is stopped.
+
+```ini
+[Unit]
+Description=Delete JDR database dumps before they are 7 days old
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+ExecStart=/usr/local/sbin/jdr-backup-rotate /var/backups/jdr
+```
+
+Write `/etc/systemd/system/jdr-backup-rotate.timer`:
+
+```ini
+[Unit]
+Description=Hourly deletion of old JDR database dumps
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=1min
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+```
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now jdr-backup-rotate.timer
+```
+
+`Persistent=true` runs one missed deletion after a power cut. The randomized delay still applies to that catch-up, and the 126-minute budget above includes it. Confirm a run by hand: `sudo systemctl start jdr-backup-rotate.service`. A failed `jdr-pg-dump.service` does not stop this timer.
+
+On the backup host, install the same script and point it at the backup directory, including any `rollback/` subdirectory. Replace the path and the account below with the account that owns those files. This unit is independent of the Pi's `pg_dump` timer.
+
+```ini
+[Unit]
+Description=Delete off-Pi JDR database dumps before they are 7 days old
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=backup
+Group=backup
+ExecStart=/usr/local/sbin/jdr-backup-rotate /var/backups/jdr-remote
+```
+
+```ini
+[Unit]
+Description=Hourly deletion of off-Pi JDR database dumps
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=1min
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+```
+
+If the backup host has no systemd, run the same script from cron. The hourly line is the steady schedule. `@reboot` is the catch-up for a missed hour, which is the cron form of `Persistent=true`. Cron has no randomized delay, so it deletes sooner than the Pi timer, still before 7 days.
+
+```text
+0 * * * * /usr/local/sbin/jdr-backup-rotate /var/backups/jdr-remote
+@reboot /usr/local/sbin/jdr-backup-rotate /var/backups/jdr-remote
+```
 
 Restore test, into a database that is not `jdr_bot` and does not end in `_test`. The integration tests refuse a database whose name does not end in `_test`, and they delete rows when they run. Do not point `DATABASE_URL` or `TEST_DATABASE_URL` at `jdr_bot` or at the restore database.
 
@@ -375,7 +542,7 @@ sudo -u postgres dropdb --cluster 16/main jdr_restore_check
 The application expects revision `0004`. A newer checkout can expect a newer revision. Order:
 
 1. Record the deployed SHA in `previous` with `previous=$(sudo -u jdrbot -H git -C /opt/jdr-bot rev-parse HEAD)`. That value is the rollback target. Do not check it out as the upgrade.
-2. `sudo systemctl start jdr-pg-dump.service` and copy that dump off the Pi.
+2. `sudo systemctl start jdr-pg-dump.service` and copy that dump off the Pi into the rotated backup directory. Keep the `jdr_bot-YYYYMMDDTHHMMSSZ` stamp in the filename, including a rollback suffix such as `.rollback.dump`. The off-Pi rotation deletes it before the file is 7 days old, with every other dump in that directory.
 3. `sudo systemctl stop jdr-bot.service`. Confirm no second process: `pgrep -a -f '/opt/jdr-bot/.venv/bin/jdr-bot'` prints nothing.
 4. Check out the new commit and update the virtualenv as `jdrbot`, using the upgrade block below. Set `TARGET_REF` to that new commit SHA or tag. The block checks out `TARGET_REF`. It leaves `previous` for rollback.
 5. `sudo systemctl start jdr-bot-migrate.service` and confirm it exited 0.
@@ -420,7 +587,7 @@ journalctl -u jdr-bot -n 100 --no-pager
 
 Startup failures use the fixed categories in [decision 0005](../decisions/0005-startup-failures.md) and the troubleshooting list in [development instructions](../DEVELOPMENT.md). Configuration failures exit 2. Other startup failures exit 1. The lines name categories and field names. They omit exception text, driver messages, the revision value, tokens, database URLs, Jira email, and JQL.
 
-Job lines include ids and categories (`reminder_delivered`, `brief_delivered`, `meeting_created`, `guild_config_updated`). They do not include meeting titles, issue titles, assignee names, transcript text, or audio. Voice transcripts are not implemented. Do not turn on discord.py debug logging, and do not wrap the service in a shell that prints the environment. Either change can put a secret in the journal.
+Job lines include ids and categories (`reminder_delivered`, `brief_delivered`, `meeting_created`, `guild_config_updated`). They do not include meeting titles, issue titles, assignee names, transcript text, or audio. Voice transcripts are not implemented. When capture exists, `meeting_content_purged` and `meeting_content_deleted_on_request` log the session id and the artifact id only. `meeting_content_purge_failed` logs those ids and one fixed category (`discord_receipt_missing`, `provider_delete_unsupported`, `provider_delete_failed`, or `local_delete_failed`). The two success events do not carry a category, and none of the three logs a Discord user id. [Decision 0007](../decisions/0007-meeting-data-retention.md) is the source of that shape. Those lines omit meeting content. Do not turn on discord.py debug logging, and do not wrap the service in a shell that prints the environment. Either change can put a secret in the journal.
 
 If a journal line contains a token or meeting content, stop the service, rotate that credential, and report it to the contact in [SECURITY.md](../../SECURITY.md). Do not paste the line into a public issue.
 
@@ -451,7 +618,7 @@ sudo -u jdrbot -H bash -c 'cd /opt/jdr-bot && uv sync --locked'
 sudo systemctl start jdr-bot.service
 ```
 
-Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out that same `previous` SHA, `uv sync --locked`, and start.
+Rollback when a migration has been applied: stop the bot, restore the dump taken before the migration, check out that same `previous` SHA, `uv sync --locked`, and start. That dump is deleted before it is 7 days old, with every other dump, under [decision 0007](../decisions/0007-meeting-data-retention.md). A restore is not a way to keep meeting-capture content past its deletion deadline.
 
 ```sh
 previous=${previous:?set previous to the SHA recorded before the upgrade}
